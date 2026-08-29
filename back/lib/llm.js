@@ -29,6 +29,25 @@ async function chat(messages, { json = false } = {}) {
   }
 }
 
+// Guarda determinista: el LLM a veces alucina el año → una fecha en el pasado
+// crearía un mandato nacido expirado. Se corre año por año hasta ser vigente.
+// La fecha se formatea en hora local: toISOString() la correría un día por timezone.
+function fixValidUntil(dateStr) {
+  if (!dateStr) return dateStr;
+  const d = new Date(dateStr + 'T23:59:59');
+  if (isNaN(d)) return dateStr;
+  const now = new Date();
+  while (d < now) d.setFullYear(d.getFullYear() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Esquema y reglas de negocio del Intent Mandate: compartidos por el parser de
+// un turno (parseMandate) y por el chat multi-turno (chatMandate).
+const CAMPOS = `{"category": "flights", "destination": string|null, "max_amount": number, "total_budget": number,
+ "valid_until": "YYYY-MM-DD", "price_below": number|null, "max_uses_per_month": number|null}`;
+const REGLAS = `Reglas: si menciona un precio umbral ("si baja de $X"), ponlo en price_below Y usa ese mismo valor como max_amount.
+Si no da presupuesto total, usa max_amount * (max_uses_per_month || 1). "fin de mes" = último día del mes actual.`;
+
 // Texto libre de Marta → Intent Mandate estructurado (ella confirma antes de firmar)
 async function parseMandate(text) {
   const today = new Date().toISOString().slice(0, 10);
@@ -38,10 +57,8 @@ async function parseMandate(text) {
         role: 'system',
         content: `Eres un parser de mandatos de compra para agentes de IA. Hoy es ${today}.
 Convierte la instrucción del usuario en JSON con exactamente estas claves:
-{"category": "flights", "destination": string|null, "max_amount": number, "total_budget": number,
- "valid_until": "YYYY-MM-DD", "price_below": number|null, "max_uses_per_month": number|null}
-Reglas: si menciona un precio umbral ("si baja de $X"), ponlo en price_below Y usa ese mismo valor como max_amount.
-Si no da presupuesto total, usa max_amount * (max_uses_per_month || 1). "fin de mes" = último día del mes actual.
+${CAMPOS}
+${REGLAS}
 Responde SOLO el JSON.`,
       },
       { role: 'user', content: text },
@@ -49,15 +66,38 @@ Responde SOLO el JSON.`,
     { json: true }
   );
   const parsed = JSON.parse(content);
-  // Guarda determinista: el LLM a veces alucina el año → una fecha en el pasado
-  // crearía un mandato nacido expirado. Se corrige al año vigente.
-  if (parsed.valid_until) {
-    const d = new Date(parsed.valid_until + 'T23:59:59');
-    const now = new Date();
-    while (!isNaN(d) && d < now) d.setFullYear(d.getFullYear() + 1);
-    if (!isNaN(d))
-      parsed.valid_until = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+  parsed.valid_until = fixValidUntil(parsed.valid_until);
+  return parsed;
+}
+
+// Chat multi-turno: Marta autoriza conversando. El LLM interpreta y repregunta lo que
+// falte; NUNCA decide que el mandato está listo — eso lo resuelve la ruta de forma
+// determinista sobre los campos requeridos (el LLM propone, el mandato dispone).
+async function chatMandate(messages) {
+  const today = new Date().toISOString().slice(0, 10);
+  const content = await chat(
+    [
+      {
+        role: 'system',
+        content: `Eres el asistente del wallet "PagoSeguro". Ayudas a Marta a definir el Intent Mandate
+con el que su agente de IA podrá comprar por ella. Hoy es ${today}.
+Hablas español, tono cercano y breve: 1-2 frases por turno, sin listas ni markdown.
+Vas construyendo este objeto con lo que ella te diga:
+${CAMPOS}
+${REGLAS}
+No inventes valores que ella no haya dicho: déjalos en null.
+Los campos obligatorios son max_amount y valid_until. Si falta alguno, pregunta SOLO por eso
+(una pregunta por turno) y deja ready en false. Cuando ya tengas ambos, pon ready en true y
+en reply resume el mandato en una frase e invítala a revisarlo y firmarlo.
+Si ella corrige algo, devuelve el objeto completo ya corregido.
+Responde SOLO este JSON: {"reply": string, "mandate": objeto|null, "ready": boolean}`,
+      },
+      ...messages.map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.content) })),
+    ],
+    { json: true }
+  );
+  const parsed = JSON.parse(content);
+  if (parsed.mandate) parsed.mandate.valid_until = fixValidUntil(parsed.mandate.valid_until);
   return parsed;
 }
 
@@ -83,4 +123,4 @@ async function draftDisputeVerdict(replay) {
   ]);
 }
 
-module.exports = { parseMandate, explainDecision, draftDisputeVerdict, hasKey: () => !!API_KEY };
+module.exports = { parseMandate, chatMandate, fixValidUntil, explainDecision, draftDisputeVerdict, hasKey: () => !!API_KEY };

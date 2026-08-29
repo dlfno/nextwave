@@ -14,6 +14,52 @@ router.get('/context', (req, res) => {
   res.json({ user, agent, payment_method: pm, llm: llm.hasKey() });
 });
 
+// Fallback determinista compartido: los valores del caso de demo. Se usa cuando no hay
+// API key o la llamada al LLM falla — la demo nunca depende de OpenAI (DECISIONS #17).
+function demoMandate() {
+  const finDeMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
+  return {
+    category: 'flights',
+    destination: 'Córdoba',
+    max_amount: 150,
+    total_budget: 150,
+    valid_until: `${finDeMes.getFullYear()}-${String(finDeMes.getMonth() + 1).padStart(2, '0')}-${String(finDeMes.getDate()).padStart(2, '0')}`,
+    price_below: 150,
+    max_uses_per_month: 1,
+  };
+}
+
+// Normaliza lo que devuelve el LLM: números reales, sin valores absurdos, categoría fija.
+// El modelo propone texto; los tipos y los defaults los impone el servidor.
+function normalizeMandate(m) {
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const out = {
+    category: 'flights',
+    destination: m.destination ? String(m.destination) : null,
+    max_amount: num(m.max_amount),
+    total_budget: num(m.total_budget),
+    valid_until: m.valid_until ? String(m.valid_until) : null,
+    price_below: num(m.price_below),
+    max_uses_per_month: num(m.max_uses_per_month),
+  };
+  // Misma regla que el prompt, pero aplicada de forma determinista por si el LLM la ignora
+  if (out.price_below && !out.max_amount) out.max_amount = out.price_below;
+  if (!out.total_budget && out.max_amount) out.total_budget = out.max_amount * (out.max_uses_per_month || 1);
+  if (out.valid_until && !/^\d{4}-\d{2}-\d{2}$/.test(out.valid_until)) out.valid_until = null;
+  return out;
+}
+
+// Campos sin los cuales un mandato no puede firmarse
+function missingFields(m) {
+  const missing = [];
+  if (!m || !m.max_amount) missing.push('max_amount');
+  if (!m || !m.valid_until) missing.push('valid_until');
+  return missing;
+}
+
 // LLM: texto libre → Intent Mandate estructurado (Marta confirma antes de firmar)
 router.post('/parse-mandate', async (req, res) => {
   const { text } = req.body;
@@ -21,19 +67,39 @@ router.post('/parse-mandate', async (req, res) => {
     const parsed = await llm.parseMandate(text);
     res.json({ source: 'llm', mandate: parsed });
   } catch (e) {
-    // Fallback determinista: valores del caso de demo
+    res.json({ source: 'fallback', error: e.message, mandate: demoMandate() });
+  }
+});
+
+// Chat multi-turno: Marta conversa y el LLM va armando el mandato. Stateless — el
+// frontend manda el historial completo en cada turno.
+// El `ready` del LLM es solo una sugerencia: quien decide si el mandato está completo
+// es este handler, sobre los campos requeridos (el LLM propone, el mandato dispone).
+router.post('/mandate-chat', async (req, res) => {
+  const messages = Array.isArray(req.body.messages) ? req.body.messages : [];
+  try {
+    const out = await llm.chatMandate(messages);
+    const mandate = out.mandate ? normalizeMandate(out.mandate) : null;
+    const missing = missingFields(mandate);
+    const ready = missing.length === 0;
+    // El LLM aporta naturalidad mientras pregunta, pero el turno del hand-off es
+    // determinista: su texto podría contradecir el mandato que se va a firmar
+    // (visto en pruebas: decía "ready" y a la vez pedía un dato que ya tenía).
+    const preguntas = { max_amount: '¿Cuánto como máximo por compra?', valid_until: '¿Hasta qué fecha quieres que valga el mandato?' };
+    const reply = ready
+      ? 'Con eso ya tengo todo. Te muestro el mandato completo: revísalo y fírmalo si estás de acuerdo.'
+      : String(out.reply || preguntas[missing[0]] || '');
+    res.json({ source: 'llm', reply, mandate, ready, missing });
+  } catch (e) {
+    // Sin LLM la conversación se degrada a un turno: proponemos el mandato de la demo
+    // y que Marta lo revise en el box de confirmación. El badge lo declara como fallback.
     res.json({
       source: 'fallback',
       error: e.message,
-      mandate: {
-        category: 'flights',
-        destination: 'Córdoba',
-        max_amount: 150,
-        total_budget: 150,
-        valid_until: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10),
-        price_below: 150,
-        max_uses_per_month: 1,
-      },
+      reply: 'No pude consultar al modelo, así que te propongo el mandato de la demo. Revísalo y ajústalo antes de firmar.',
+      mandate: demoMandate(),
+      ready: true,
+      missing: [],
     });
   }
 });
@@ -47,7 +113,7 @@ router.post('/mandates', (req, res) => {
   const user = db.prepare('SELECT * FROM users LIMIT 1').get();
   const agent = db.prepare('SELECT * FROM agents WHERE is_rogue = 0 LIMIT 1').get();
   const pm = db.prepare('SELECT * FROM payment_methods WHERE user_id = ?').get(user.id);
-  const { category = 'flights', destination, max_amount, total_budget, valid_until, price_below, max_uses_per_month } = req.body;
+  const { category = 'flights', destination, max_amount, total_budget, valid_until, price_below, max_uses_per_month, nl_text } = req.body;
 
   const conditions = {};
   if (destination) conditions.destination = destination;
@@ -64,6 +130,7 @@ router.post('/mandates', (req, res) => {
     valid_from: new Date().toISOString(),
     valid_until: new Date(valid_until + 'T23:59:59').toISOString(),
     conditions,
+    nl_text,
   });
   res.json(row);
 });

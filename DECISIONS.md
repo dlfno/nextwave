@@ -99,3 +99,18 @@ Registro de las decisiones de diseño del proyecto: qué se decidió, qué alter
 
 ### 20. Templates inline y 4 páginas standalone
 **Por qué:** con 4 vistas y un día, un archivo por página (componente + template + lógica) minimiza saltos de contexto. Los estilos viven todos en `styles.css` global para mantener un solo sistema visual.
+
+### 21. La autorización es una conversación, pero el hand-off es determinista
+**Contexto:** crear el mandato era un formulario de un disparo — textarea → "Interpretar con IA" → 7 inputs sueltos. Si el LLM no entendía algo, no preguntaba: dejaba el hueco vacío. Y el botón decía "Confirmar" sin que hubiera nada que confirmar: ya estabas viendo los campos.
+**Decisión:** la vista de Marta es un chat multi-turno (`POST /wallet/mandate-chat`, stateless — el frontend manda el historial completo) y, cuando el mandato está completo, se abre un **modal de confirmación** con los campos aún editables. Nada se firma sin ese gesto explícito.
+**Las tres guardas deterministas — el LLM propone, el mandato dispone:**
+1. **`ready` lo decide el servidor**, no el modelo: se calcula sobre los campos requeridos (`max_amount`, `valid_until`). Si el LLM dice "listo" con campos faltantes, la ruta responde `ready: false` y repregunta con plantilla — el modal nunca se abre a medias.
+2. **El turno del hand-off tiene texto fijo.** El LLM aporta naturalidad mientras pregunta, pero en el turno que abre el modal su `reply` se sustituye por una plantilla. Encontrado probando con la key real: devolvió `ready: true` y a la vez pidió un dato que ya tenía — el modal se habría abierto bajo un mensaje que lo contradecía.
+3. **El resumen del modal se construye en el cliente desde el `draft`**, no con la frase del LLM: lo que Marta lee antes de firmar es exactamente lo que se va a firmar.
+**Por qué:** la conversación es donde el LLM aporta (interpretar lenguaje ambiguo, repreguntar lo justo); el momento de autorizar es donde no puede participar. Sin `OPENAI_API_KEY` el chat se degrada a un turno con los valores de la demo y el badge lo declara como fallback (DECISIONS #17).
+**Corolario:** el texto libre de Marta se guarda en el trail dentro de `mandate_created` (`nl_text`), **nunca en `mandatePayload()`** — añadir un campo a lo que se firma invalidaría la verificación del merchant.
+
+### 22. El estado ligado al template vive en señales, no en campos planos
+**Contexto:** al enviar un mensaje del chat, `send()` hacía `this.input = ''` sobre un campo plano ligado con `[(ngModel)]`. El mensaje salía correctamente, pero el textarea se quedaba con el texto ya enviado — invitando a mandarlo dos veces. Detectado operando la UI en el navegador.
+**Decisión:** `input` pasó a ser `signal('')` con `[ngModel]="input()"` + `(ngModelChange)="input.set($event)"`.
+**Por qué:** con `provideZoneChangeDetection({ eventCoalescing: true })` la detección de cambios se agrupa y limpiar el campo desde código no repintaba el binding de forma fiable. Las señales notifican el cambio explícitamente. Regla general para esta app: si el template lo lee, va en una señal.

@@ -21,7 +21,7 @@ function mandatePayload(row) {
   };
 }
 
-function createMandate({ user_id, agent_id, payment_method_id, category, max_amount, total_budget, valid_from, valid_until, conditions }) {
+function createMandate({ user_id, agent_id, payment_method_id, category, max_amount, total_budget, valid_from, valid_until, conditions, nl_text }) {
   const info = db
     .prepare(
       `INSERT INTO mandates (user_id, agent_id, payment_method_id, category, max_amount, total_budget, valid_from, valid_until, conditions_json, wallet_signature)
@@ -43,6 +43,9 @@ function createMandate({ user_id, agent_id, payment_method_id, category, max_amo
     total_budget,
     valid_until,
     conditions: conditions || {},
+    // Lo que Marta dijo en sus palabras. Solo va al trail: añadirlo al payload firmado
+    // (mandatePayload) invalidaría la verificación del merchant.
+    ...(nl_text ? { nl_text: String(nl_text).slice(0, 500) } : {}),
   });
   return row;
 }
