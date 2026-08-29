@@ -47,6 +47,46 @@ Finalization produces independent `searchSpecification` and
 `authorizationSpecification` objects. Provider output is schema-validated before
 it is persisted and never represents an authorization decision.
 
+## Mandate signing and lifecycle
+
+Generate a development ES256 signing key once:
+
+```sh
+npm run key:generate
+```
+
+Put the resulting one-line private JWK in `MANDATE_SIGNING_PRIVATE_JWK` and set a
+stable `MANDATE_SIGNING_KEY_ID`. Do not commit the generated key. Production key
+custody should move to KMS/HSM; the environment-backed key is the P0 Trusted
+Surface implementation.
+
+Mandate endpoints include:
+
+- `POST /api/v1/purchase-intents/:intentId/mandates/draft`
+- `GET /api/v1/mandates` and `GET /api/v1/mandates/:mandateId`
+- `POST /api/v1/mandates/:mandateId/authorize`
+- `POST /api/v1/mandates/:mandateId/versions`
+- `POST /api/v1/mandates/:mandateId/versions/:version/authorize`
+- `POST /api/v1/mandates/:mandateId/revoke`
+
+Authorization and revocation require authentication within the last five minutes.
+Signed evidence uses canonical JSON, SHA-256, and ES256 compact JWS. Replacements
+remain drafts until authorized; activation atomically supersedes the prior version.
+
+## Deterministic mandate policy engine
+
+Milestone 4 adds a pure TypeScript `DeterministicMandateEngine`. Its caller must
+load the current mandate, online revocation state, authoritative checkout,
+reserved/consumed usage, and any human approval before evaluation. The engine
+performs no I/O and makes no LLM calls.
+
+The result is `ALLOW`, `DENY`, or `REQUIRE_HUMAN_APPROVAL`, accompanied by a
+stable reason code and an ordered list of machine-readable checks. It validates
+the mandate and checkout signatures, authorized agent, lifecycle and validity,
+live revocation, checkout freshness and context binding, merchant/product/category,
+quantity, amount, currency, recurrence, budget, and checkout-bound approval.
+Approval evidence never overrides a failed mandate constraint.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:

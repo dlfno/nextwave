@@ -1,4 +1,4 @@
-import { customType, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const citext = customType<{ data: string }>({
   dataType: () => 'citext',
@@ -22,6 +22,11 @@ export const intentStatus = pgEnum('intent_status', [
   'FAILED',
   'CANCELLED',
 ]);
+export const mandateStatus = pgEnum('mandate_status', ['DRAFT', 'ACTIVE', 'REVOKED', 'EXPIRED', 'CANCELLED']);
+export const mandateVersionStatus = pgEnum('mandate_version_status', [
+  'DRAFT', 'ACTIVE', 'SUPERSEDED', 'REVOKED', 'EXPIRED', 'CANCELLED',
+]);
+export const mandateMode = pgEnum('mandate_mode', ['HUMAN_PRESENT', 'AUTONOMOUS']);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -72,5 +77,62 @@ export const intentMessages = pgTable('intent_messages', {
   role: text('role').notNull().$type<'USER' | 'AGENT' | 'TOOL' | 'SYSTEM'>(),
   content: text('content').notNull(),
   structuredPayload: jsonb('structured_payload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mandates = pgTable('mandates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  intentId: uuid('intent_id').references(() => purchaseIntents.id),
+  status: mandateStatus('status').notNull().default('DRAFT'),
+  mode: mandateMode('mode').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  currentVersionId: uuid('current_version_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mandateVersions = pgTable('mandate_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mandateId: uuid('mandate_id').notNull().references(() => mandates.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull(),
+  status: mandateVersionStatus('status').notNull().default('DRAFT'),
+  maxTotalMinor: bigint('max_total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  validFrom: timestamp('valid_from', { withTimezone: true }).notNull(),
+  validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+  requiresFinalConfirmation: boolean('requires_final_confirmation').notNull().default(false),
+  maxUses: integer('max_uses'),
+  recurrencePeriod: text('recurrence_period'),
+  budgetMinor: bigint('budget_minor', { mode: 'bigint' }),
+  paymentMethodId: uuid('payment_method_id'),
+  allowedMerchantsAny: boolean('allowed_merchants_any').notNull().default(false),
+  canonicalPayload: jsonb('canonical_payload').notNull(),
+  payloadHash: bytea('payload_hash'),
+  signedPayload: text('signed_payload'),
+  signatureAlgorithm: text('signature_algorithm'),
+  signingKeyId: text('signing_key_id'),
+  signedAt: timestamp('signed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const mandateProductConstraints = pgTable('mandate_product_constraints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id, { onDelete: 'cascade' }),
+  matchType: text('match_type').notNull(),
+  productId: uuid('product_id'),
+  normalizedName: text('normalized_name'),
+  categoryPrefix: text('category_prefix'),
+  maxQuantity: integer('max_quantity').notNull().default(1),
+});
+
+export const mandateRevocations = pgTable('mandate_revocations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mandateId: uuid('mandate_id').notNull().references(() => mandates.id, { onDelete: 'cascade' }),
+  revokedByUserId: uuid('revoked_by_user_id').notNull().references(() => users.id),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
+  reason: text('reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

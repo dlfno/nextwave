@@ -12,6 +12,8 @@ import { errorHandler, notFoundHandler } from './http/error-handler.js';
 import { requireAllowedOrigin } from './http/origin.js';
 import { createAgentRouter } from './modules/agents/agent-router.js';
 import { createAuthRouter } from './modules/auth/auth-router.js';
+import { createMandateRouter } from './modules/mandates/mandate-router.js';
+import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
 import { createPurchaseIntentRouter } from './modules/purchase-intents/purchase-intent-router.js';
 import {
   MockPurchasingAgentProvider,
@@ -23,6 +25,7 @@ interface AppDependencies {
   database: DatabaseClient;
   logger?: Logger;
   agentProvider?: PurchasingAgentProvider;
+  mandateSigner?: MandateSigner;
 }
 
 export function createApp({
@@ -30,6 +33,7 @@ export function createApp({
   database,
   logger = pino(),
   agentProvider = new MockPurchasingAgentProvider(),
+  mandateSigner = new UnavailableMandateSigner(),
 }: AppDependencies): Express {
   const app = express();
 
@@ -45,6 +49,7 @@ export function createApp({
   app.use('/api/v1/auth', createAuthRouter(database, config));
   app.use('/api/v1/agents', createAgentRouter(database));
   app.use('/api/v1/purchase-intents', createPurchaseIntentRouter(database, agentProvider));
+  app.use('/api/v1', createMandateRouter(database, mandateSigner));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

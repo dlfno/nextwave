@@ -107,3 +107,14 @@ export const requireCsrf: RequestHandler = (request, _response, next) => {
 
   next();
 };
+
+export function requireRecentAuthentication(maxAgeMilliseconds = 5 * 60 * 1000): RequestHandler {
+  return (request, _response, next) => {
+    const reauthenticatedAt = request.auth?.session.reauthenticatedAt;
+    if (!reauthenticatedAt || Date.now() - reauthenticatedAt.getTime() > maxAgeMilliseconds) {
+      next(new HttpError(403, 'REAUTHENTICATION_REQUIRED', 'Recent authentication is required'));
+      return;
+    }
+    next();
+  };
+}

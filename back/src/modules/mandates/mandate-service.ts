@@ -1,0 +1,356 @@
+import { and, asc, desc, eq } from 'drizzle-orm';
+import type { PoolClient } from 'pg';
+
+import type { DatabaseClient } from '../../database/client.js';
+import {
+  mandateProductConstraints,
+  mandateRevocations,
+  mandates,
+  mandateVersions,
+  purchaseIntents,
+} from '../../database/schema.js';
+import { HttpError } from '../../shared/http-error.js';
+import { authorizationSpecificationSchema, type AuthorizationSpecification } from '../purchase-intents/specifications.js';
+import type { MandateSigner } from './mandate-signer.js';
+
+interface AuthorizeRow {
+  mandate_id: string;
+  user_id: string;
+  agent_id: string;
+  intent_id: string | null;
+  mandate_status: 'DRAFT' | 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'CANCELLED';
+  mode: 'HUMAN_PRESENT' | 'AUTONOMOUS';
+  version_id: string;
+  version: number;
+  version_status: 'DRAFT' | 'ACTIVE' | 'SUPERSEDED' | 'REVOKED' | 'EXPIRED' | 'CANCELLED';
+  valid_from: Date;
+  valid_until: Date;
+  canonical_payload: AuthorizationSpecification;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  if ('code' in error && error.code === '23505') return true;
+  return 'cause' in error && isUniqueViolation(error.cause);
+}
+
+function assertFutureValidity(specification: AuthorizationSpecification): Date {
+  const validUntil = new Date(specification.validUntil);
+  if (validUntil.getTime() <= Date.now()) {
+    throw new HttpError(400, 'MANDATE_VALIDITY_INVALID', 'Mandate validity must end in the future');
+  }
+  return validUntil;
+}
+
+export class MandateService {
+  constructor(
+    private readonly database: DatabaseClient,
+    private readonly signer: MandateSigner,
+  ) {}
+
+  async createDraft(userId: string, intentId: string, mode: 'HUMAN_PRESENT' | 'AUTONOMOUS') {
+    const [intent] = await this.database.db
+      .select()
+      .from(purchaseIntents)
+      .where(and(eq(purchaseIntents.id, intentId), eq(purchaseIntents.userId, userId)))
+      .limit(1);
+
+    if (!intent) throw new HttpError(404, 'PURCHASE_INTENT_NOT_FOUND', 'Purchase intent not found');
+    const parsed = authorizationSpecificationSchema.safeParse(intent.authorizationSpecification);
+    if (!parsed.success) {
+      throw new HttpError(409, 'SPECIFICATIONS_NOT_FINALIZED', 'Authorization specification is not finalized');
+    }
+    const specification = parsed.data;
+    const validUntil = assertFutureValidity(specification);
+
+    try {
+      const result = await this.database.db.transaction(async (transaction) => {
+        const [mandate] = await transaction
+          .insert(mandates)
+          .values({
+            userId,
+            agentId: intent.agentId,
+            intentId,
+            status: 'DRAFT',
+            mode,
+            expiresAt: validUntil,
+          })
+          .returning();
+        if (!mandate) throw new Error('Mandate insert did not return a row');
+
+        const [version] = await transaction
+          .insert(mandateVersions)
+          .values({
+            mandateId: mandate.id,
+            version: 1,
+            status: 'DRAFT',
+            maxTotalMinor: BigInt(specification.spendConstraints.maxTotalMinor),
+            currency: specification.spendConstraints.currency,
+            validFrom: new Date(),
+            validUntil,
+            requiresFinalConfirmation: specification.requiresFinalConfirmation,
+            maxUses: 1,
+            budgetMinor: BigInt(specification.spendConstraints.maxTotalMinor),
+            allowedMerchantsAny: specification.merchantConstraints.allowedMerchants === 'ANY',
+            canonicalPayload: specification,
+          })
+          .returning();
+        if (!version) throw new Error('Mandate version insert did not return a row');
+
+        await transaction.insert(mandateProductConstraints).values({
+          mandateVersionId: version.id,
+          matchType: 'CATEGORY',
+          categoryPrefix: specification.productConstraints.category,
+          maxQuantity: specification.productConstraints.quantity,
+        });
+        return { mandate, version };
+      });
+      return this.serializeDraft(result.mandate, result.version);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new HttpError(409, 'MANDATE_ALREADY_EXISTS', 'A mandate already exists for this purchase intent');
+      }
+      throw error;
+    }
+  }
+
+  async createVersion(userId: string, mandateId: string, specification: AuthorizationSpecification) {
+    const validUntil = assertFutureValidity(specification);
+    const client = await this.database.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const mandateResult = await client.query<{
+        id: string;
+        status: string;
+      }>('SELECT id, status FROM mandates WHERE id = $1 AND user_id = $2 FOR UPDATE', [mandateId, userId]);
+      const mandate = mandateResult.rows[0];
+      if (!mandate) throw new HttpError(404, 'MANDATE_NOT_FOUND', 'Mandate not found');
+      if (mandate.status === 'REVOKED') throw new HttpError(409, 'MANDATE_REVOKED', 'Mandate is revoked');
+      if (mandate.status === 'EXPIRED') throw new HttpError(409, 'MANDATE_EXPIRED', 'Mandate is expired');
+
+      const versionResult = await client.query<{ next_version: number }>(
+        'SELECT COALESCE(MAX(version), 0)::integer + 1 AS next_version FROM mandate_versions WHERE mandate_id = $1',
+        [mandateId],
+      );
+      const nextVersion = versionResult.rows[0]!.next_version;
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO mandate_versions (
+          mandate_id, version, status, max_total_minor, currency, valid_from, valid_until,
+          requires_final_confirmation, max_uses, budget_minor, allowed_merchants_any, canonical_payload
+        ) VALUES ($1, $2, 'DRAFT', $3, $4, now(), $5, $6, 1, $3, true, $7)
+        RETURNING id`,
+        [
+          mandateId,
+          nextVersion,
+          specification.spendConstraints.maxTotalMinor,
+          specification.spendConstraints.currency,
+          validUntil,
+          specification.requiresFinalConfirmation,
+          specification,
+        ],
+      );
+      await client.query(
+        `INSERT INTO mandate_product_constraints (
+          mandate_version_id, match_type, category_prefix, max_quantity
+        ) VALUES ($1, 'CATEGORY', $2, $3)`,
+        [inserted.rows[0]!.id, specification.productConstraints.category, specification.productConstraints.quantity],
+      );
+      await client.query('COMMIT');
+      return this.get(userId, mandateId);
+    } catch (error) {
+      await this.rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async authorize(userId: string, mandateId: string, version?: number) {
+    const client = await this.database.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const targetVersion = version ?? 1;
+      const result = await client.query<AuthorizeRow>(
+        `SELECT
+          m.id AS mandate_id, m.user_id, m.agent_id, m.intent_id, m.status AS mandate_status, m.mode,
+          mv.id AS version_id, mv.version, mv.status AS version_status,
+          mv.valid_from, mv.valid_until, mv.canonical_payload
+        FROM mandates m
+        JOIN mandate_versions mv ON mv.mandate_id = m.id AND mv.version = $3
+        WHERE m.id = $1 AND m.user_id = $2
+        FOR UPDATE OF m, mv`,
+        [mandateId, userId, targetVersion],
+      );
+      const row = result.rows[0];
+      if (!row) throw new HttpError(404, 'MANDATE_VERSION_NOT_FOUND', 'Mandate version not found');
+      if (row.mandate_status === 'REVOKED') throw new HttpError(409, 'MANDATE_REVOKED', 'Mandate is revoked');
+      if (row.mandate_status === 'EXPIRED' || row.valid_until.getTime() <= Date.now()) {
+        throw new HttpError(409, 'MANDATE_EXPIRED', 'Mandate is expired');
+      }
+      if (row.version_status !== 'DRAFT') {
+        throw new HttpError(409, 'MANDATE_VERSION_NOT_DRAFT', 'Mandate version is not awaiting authorization');
+      }
+
+      const signedAt = new Date();
+      const payload: Record<string, unknown> = {
+        vct: 'com.nextwave.purchase-mandate.open.1',
+        issuer: 'urn:nextwave:trusted-surface',
+        subject: `urn:nextwave:user:${row.user_id}`,
+        mandateId: row.mandate_id,
+        version: row.version,
+        mode: row.mode,
+        authorizedAgent: { id: row.agent_id },
+        constraints: row.canonical_payload,
+        issuedAt: signedAt.toISOString(),
+        validFrom: row.valid_from.toISOString(),
+        validUntil: row.valid_until.toISOString(),
+      };
+      const evidence = await this.signer.sign(payload);
+      if (!(await this.signer.verify(evidence.signedPayload, evidence.canonicalPayload))) {
+        throw new HttpError(500, 'MANDATE_SIGNATURE_VERIFICATION_FAILED', 'Created mandate signature did not verify');
+      }
+
+      await client.query(
+        "UPDATE mandate_versions SET status = 'SUPERSEDED' WHERE mandate_id = $1 AND status = 'ACTIVE'",
+        [mandateId],
+      );
+      await client.query(
+        `UPDATE mandate_versions SET
+          status = 'ACTIVE', canonical_payload = $2, payload_hash = $3, signed_payload = $4,
+          signature_algorithm = $5, signing_key_id = $6, signed_at = $7
+        WHERE id = $1`,
+        [
+          row.version_id,
+          evidence.canonicalPayload,
+          evidence.payloadHash,
+          evidence.signedPayload,
+          evidence.signatureAlgorithm,
+          evidence.signingKeyId,
+          signedAt,
+        ],
+      );
+      await client.query(
+        "UPDATE mandates SET status = 'ACTIVE', current_version_id = $2, expires_at = $3 WHERE id = $1",
+        [mandateId, row.version_id, row.valid_until],
+      );
+      if (row.intent_id) {
+        await client.query("UPDATE purchase_intents SET status = 'MANDATE_AUTHORIZED' WHERE id = $1", [row.intent_id]);
+      }
+      await client.query('COMMIT');
+      return this.get(userId, mandateId);
+    } catch (error) {
+      await this.rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async revoke(userId: string, mandateId: string, reason?: string) {
+    await this.expireOwned(userId, mandateId);
+    const [mandate] = await this.database.db
+      .select()
+      .from(mandates)
+      .where(and(eq(mandates.id, mandateId), eq(mandates.userId, userId)))
+      .limit(1);
+    if (!mandate) throw new HttpError(404, 'MANDATE_NOT_FOUND', 'Mandate not found');
+    if (mandate.status === 'EXPIRED') throw new HttpError(409, 'MANDATE_EXPIRED', 'Mandate is expired');
+    if (mandate.status !== 'REVOKED') {
+      await this.database.db.insert(mandateRevocations).values({ mandateId, revokedByUserId: userId, reason });
+    }
+    return this.get(userId, mandateId);
+  }
+
+  async list(userId: string) {
+    await this.expireOwned(userId);
+    const records = await this.database.db
+      .select()
+      .from(mandates)
+      .where(eq(mandates.userId, userId))
+      .orderBy(desc(mandates.createdAt));
+    return records.map((record) => this.serializeMandate(record));
+  }
+
+  async get(userId: string, mandateId: string) {
+    await this.expireOwned(userId, mandateId);
+    const [mandate] = await this.database.db
+      .select()
+      .from(mandates)
+      .where(and(eq(mandates.id, mandateId), eq(mandates.userId, userId)))
+      .limit(1);
+    if (!mandate) throw new HttpError(404, 'MANDATE_NOT_FOUND', 'Mandate not found');
+
+    const versions = await this.database.db
+      .select()
+      .from(mandateVersions)
+      .where(eq(mandateVersions.mandateId, mandateId))
+      .orderBy(asc(mandateVersions.version));
+    const revocations = await this.database.db
+      .select()
+      .from(mandateRevocations)
+      .where(eq(mandateRevocations.mandateId, mandateId));
+
+    return {
+      mandate: this.serializeMandate(mandate),
+      versions: await Promise.all(versions.map(async (record) => ({
+        ...this.serializeVersion(record),
+        signatureVerified: record.signedPayload && record.payloadHash
+          ? await this.signer.verify(record.signedPayload, record.canonicalPayload as Record<string, unknown>)
+          : null,
+      }))),
+      revocations,
+    };
+  }
+
+  private async expireOwned(userId: string, mandateId?: string): Promise<void> {
+    const parameters = mandateId ? [userId, mandateId] : [userId];
+    const idClause = mandateId ? ' AND id = $2' : '';
+    const client = await this.database.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE mandate_versions SET status = 'EXPIRED'
+         WHERE status = 'ACTIVE' AND mandate_id IN (
+           SELECT id FROM mandates WHERE user_id = $1${idClause} AND status = 'ACTIVE' AND expires_at <= now()
+         )`,
+        parameters,
+      );
+      await client.query(
+        `UPDATE mandates SET status = 'EXPIRED'
+         WHERE user_id = $1${idClause} AND status = 'ACTIVE' AND expires_at <= now()`,
+        parameters,
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await this.rollback(client);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private serializeDraft(mandate: typeof mandates.$inferSelect, version: typeof mandateVersions.$inferSelect) {
+    return { mandate: this.serializeMandate(mandate), version: this.serializeVersion(version) };
+  }
+
+  private serializeMandate(record: typeof mandates.$inferSelect) {
+    return record;
+  }
+
+  private serializeVersion(record: typeof mandateVersions.$inferSelect) {
+    return {
+      ...record,
+      maxTotalMinor: record.maxTotalMinor.toString(),
+      budgetMinor: record.budgetMinor?.toString() ?? null,
+      payloadHash: record.payloadHash?.toString('base64url') ?? null,
+    };
+  }
+
+  private async rollback(client: PoolClient): Promise<void> {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // Preserve the original transaction error.
+    }
+  }
+}

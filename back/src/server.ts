@@ -5,6 +5,7 @@ import pino from 'pino';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabaseClient } from './database/client.js';
+import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
 
 const config = loadConfig();
 const logger = pino({
@@ -15,7 +16,13 @@ const logger = pino({
   },
 });
 const database = createDatabaseClient(config.databaseUrl);
-const app = createApp({ config, database, logger });
+const signingKey = process.env.MANDATE_SIGNING_PRIVATE_JWK;
+if (!signingKey) throw new Error('MANDATE_SIGNING_PRIVATE_JWK is required');
+const mandateSigner = await Es256MandateSigner.create(
+  JSON.parse(signingKey) as Record<string, unknown>,
+  process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-trusted-surface-1',
+);
+const app = createApp({ config, database, logger, mandateSigner });
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'Nextwave API listening');
