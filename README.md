@@ -73,3 +73,6 @@ front/   Angular: 4 vistas — Marta, VuelaYa, Agente, Auditor (polling 2s)
 database/ schema.sql + SQLite generada
 back/demo.sh  smoke test del circuito completo por API
 ```
+
+Las decisiones de diseño (y los bugs reales que las motivaron) están documentadas en
+[DECISIONS.md](DECISIONS.md).
