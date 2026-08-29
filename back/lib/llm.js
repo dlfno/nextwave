@@ -48,7 +48,17 @@ Responde SOLO el JSON.`,
     ],
     { json: true }
   );
-  return JSON.parse(content);
+  const parsed = JSON.parse(content);
+  // Guarda determinista: el LLM a veces alucina el año → una fecha en el pasado
+  // crearía un mandato nacido expirado. Se corrige al año vigente.
+  if (parsed.valid_until) {
+    const d = new Date(parsed.valid_until + 'T23:59:59');
+    const now = new Date();
+    while (!isNaN(d) && d < now) d.setFullYear(d.getFullYear() + 1);
+    if (!isNaN(d))
+      parsed.valid_until = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return parsed;
 }
 
 async function explainDecision(context) {
