@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+database/nextwave.db
+database/nextwave.db-*
+.DS_Store
+.angular/
