@@ -49,10 +49,26 @@ export interface SignedCheckout {
   readonly expiresAt: Date;
 }
 
+export interface CompleteCheckoutRequest {
+  readonly providerCheckoutId: string;
+  readonly checkoutId: string;
+  readonly merchantId: string;
+  readonly amountMinor: bigint;
+  readonly currency: string;
+  readonly credentialProvider: string;
+  readonly credentialReference: string;
+}
+
+export interface CheckoutCompletion {
+  readonly merchantOrderId: string;
+  readonly completedAt: Date;
+}
+
 export interface CommerceProvider {
   readonly id: string;
   readonly merchantId: string;
   getLiveQuote(offer: CommerceOfferReference, currentTime: Date): Promise<AuthoritativeQuote>;
   createCheckout(request: CreateCheckoutRequest): Promise<SignedCheckout>;
   verifyCheckout(checkout: SignedCheckout): Promise<boolean>;
+  completeCheckout(request: CompleteCheckoutRequest): Promise<CheckoutCompletion>;
 }

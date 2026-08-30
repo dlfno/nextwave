@@ -131,6 +131,17 @@ engine. Results and their input hash are persisted. The approval command accepts
 to the exact checkout hash and mandate version. It then runs a fresh evaluation;
 approval never overrides a hard failure or a later mandate revocation.
 
+## Payment and order
+
+Milestone 8 exposes `POST /api/v1/purchase-attempts/:attemptId/execute`.
+Execution always performs a fresh online mandate evaluation before issuing a
+credential. The mock credential is restricted to the exact merchant, checkout,
+amount, and currency, expires within 60 seconds, and is single-use. Only its hash
+and provider reference are stored. Successful execution consumes mandate usage,
+completes the merchant checkout, and persists a transaction, confirmed order,
+line items, and signed receipt. Repeating execution for the same successful
+attempt returns the original result without issuing another credential.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:

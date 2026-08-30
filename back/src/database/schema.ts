@@ -36,6 +36,9 @@ export const purchaseAttemptStatus = pgEnum('purchase_attempt_status', [
 export const mandateDecision = pgEnum('mandate_decision', ['ALLOW', 'DENY', 'REQUIRE_HUMAN_APPROVAL']);
 export const approvalDecision = pgEnum('approval_decision', ['APPROVED', 'DENIED']);
 export const usageReservationStatus = pgEnum('usage_reservation_status', ['RESERVED', 'CONSUMED', 'RELEASED', 'EXPIRED']);
+export const paymentCredentialStatus = pgEnum('payment_credential_status', ['ISSUED', 'CONSUMED', 'REVOKED', 'EXPIRED']);
+export const transactionStatus = pgEnum('transaction_status', ['PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED']);
+export const orderStatus = pgEnum('order_status', ['CREATED', 'CONFIRMED', 'CANCELLED', 'REFUNDED']);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -296,4 +299,86 @@ export const humanApprovals = pgTable('human_approvals', {
   signedEvidence: text('signed_evidence').notNull(),
   decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+export const paymentAuthorizations = pgTable('payment_authorizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attemptId: uuid('attempt_id').notNull().unique().references(() => purchaseAttempts.id),
+  checkoutId: uuid('checkout_id').notNull().unique().references(() => checkoutSessions.id),
+  checkoutHash: bytea('checkout_hash').notNull(),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  signedPayload: text('signed_payload').notNull(),
+  payloadHash: bytea('payload_hash').notNull().unique(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+export const paymentCredentials = pgTable('payment_credentials', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  paymentAuthorizationId: uuid('payment_authorization_id').notNull().unique().references(() => paymentAuthorizations.id),
+  provider: text('provider').notNull(),
+  providerReference: text('provider_reference').notNull(),
+  tokenHash: bytea('token_hash').notNull().unique(),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  checkoutId: uuid('checkout_id').notNull().unique().references(() => checkoutSessions.id),
+  maxAmountMinor: bigint('max_amount_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  status: paymentCredentialStatus('status').notNull().default('ISSUED'),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+});
+
+export const transactions = pgTable('transactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attemptId: uuid('attempt_id').notNull().unique().references(() => purchaseAttempts.id),
+  credentialId: uuid('credential_id').references(() => paymentCredentials.id),
+  provider: text('provider').notNull(),
+  providerReference: text('provider_reference'),
+  status: transactionStatus('status').notNull().default('PENDING'),
+  amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  failureCode: text('failure_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp('processed_at', { withTimezone: true }),
+});
+
+export const orders = pgTable('orders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  transactionId: uuid('transaction_id').notNull().unique().references(() => transactions.id),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  merchantOrderId: text('merchant_order_id').notNull(),
+  status: orderStatus('status').notNull().default('CREATED'),
+  totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const orderItems = pgTable('order_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  merchantProductId: text('merchant_product_id').notNull(),
+  productId: uuid('product_id').references(() => products.id),
+  productName: text('product_name').notNull(),
+  category: text('category').notNull(),
+  quantity: integer('quantity').notNull(),
+  unitPriceMinor: bigint('unit_price_minor', { mode: 'bigint' }).notNull(),
+  totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+});
+
+export const receipts = pgTable('receipts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orderId: uuid('order_id').notNull().references(() => orders.id),
+  transactionId: uuid('transaction_id').notNull().references(() => transactions.id),
+  receiptType: text('receipt_type').notNull().$type<'CHECKOUT' | 'PAYMENT' | 'ORDER'>(),
+  signedPayload: text('signed_payload').notNull(),
+  payloadHash: bytea('payload_hash').notNull().unique(),
+  rawPayload: jsonb('raw_payload').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
 });

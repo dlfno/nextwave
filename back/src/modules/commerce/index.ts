@@ -6,6 +6,8 @@ export type {
   CheckoutLineItem,
   CommerceOfferReference,
   CommerceProvider,
+  CompleteCheckoutRequest,
+  CheckoutCompletion,
   CreateCheckoutRequest,
   SignedCheckout,
 } from './commerce-types.js';

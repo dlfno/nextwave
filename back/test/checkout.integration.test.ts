@@ -18,6 +18,9 @@ import {
   merchants,
   products,
   purchaseIntents,
+  paymentCredentials,
+  receipts,
+  transactions,
 } from '../src/database/schema.js';
 import { Es256CheckoutSigner, type CheckoutSigner } from '../src/modules/commerce/checkout-signer.js';
 import type { CommerceProvider } from '../src/modules/commerce/commerce-types.js';
@@ -188,6 +191,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
         return { ...checkout, payload: { ...checkout.payload, totalMinor: '30000' } };
       },
       verifyCheckout: (checkout) => base.verifyCheckout(checkout),
+      completeCheckout: (checkout) => base.completeCheckout(checkout),
     };
     const user = await prepare(tampered, 'tamper@example.com');
 
@@ -208,6 +212,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       },
       createCheckout: (request) => base.createCheckout(request),
       verifyCheckout: (checkout) => base.verifyCheckout(checkout),
+      completeCheckout: (checkout) => base.completeCheckout(checkout),
     };
     const expiredUser = await prepare(expired, 'expired@example.com');
     await expiredUser.client.post(`/api/v1/purchase-intents/${expiredUser.intentId}/select-offer`)
@@ -226,6 +231,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
         return { ...checkout, ...signature };
       },
       verifyCheckout: (checkout) => base.verifyCheckout(checkout),
+      completeCheckout: (checkout) => base.completeCheckout(checkout),
     };
     const mismatchUser = await prepare(mismatched, 'mismatch@example.com');
     await mismatchUser.client.post(`/api/v1/purchase-intents/${mismatchUser.intentId}/select-offer`)
@@ -247,6 +253,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
         return { ...checkout, providerCheckoutId: 'replayed-checkout-id', ...signature };
       },
       verifyCheckout: (checkout) => base.verifyCheckout(checkout),
+      completeCheckout: (checkout) => base.completeCheckout(checkout),
     };
     const user = await prepare(replaying, 'replay@example.com');
     const first = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
@@ -411,5 +418,72 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       .expect(({ body }) => expect(body.decision).toMatchObject({
         decision: 'DENY', reasonCode: 'HUMAN_APPROVAL_MISMATCH',
       }));
+  });
+
+  it('executes payment once and returns the same order on retry without exposing the token', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'payment@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.offerId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+
+    const executed = await user.client.post(`/api/v1/purchase-attempts/${attemptId}/execute`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200);
+    expect(executed.body).toMatchObject({
+      transaction: { status: 'SUCCEEDED', amountMinor: '13000' },
+      order: { status: 'CONFIRMED', totalMinor: '13000' },
+      credential: {
+        status: 'CONSUMED',
+        merchantId: VUELAYA_MERCHANT_ID,
+        checkoutId: attempt.body.checkout.id,
+        maxAmountMinor: '13000',
+        currency: 'USD',
+      },
+    });
+    expect(executed.body.credential).not.toHaveProperty('secret');
+    expect(executed.body.credential).not.toHaveProperty('tokenHash');
+    expect(executed.body.receipt.rawPayload.checkoutHash).toBe(attempt.body.checkout.checkoutHash);
+
+    const retried = await user.client.post(`/api/v1/purchase-attempts/${attemptId}/execute`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200);
+    expect(retried.body.transaction.id).toBe(executed.body.transaction.id);
+    expect(retried.body.order.id).toBe(executed.body.order.id);
+    expect(await database.db.select().from(paymentCredentials)).toHaveLength(1);
+    expect(await database.db.select().from(transactions)).toHaveLength(1);
+    expect(await database.db.select().from(receipts)).toHaveLength(1);
+  });
+
+  it('does not issue a credential without approval or after live revocation', async () => {
+    const provider = new MockVuelaYaCommerceProvider(signer);
+    const missing = await prepare(provider, 'payment-missing-approval@example.com');
+    const missingAttempt = await missing.client
+      .post(`/api/v1/purchase-intents/${missing.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', missing.csrfToken)
+      .send({ offerId: missing.offerId }).expect(201);
+    await missing.client.post(`/api/v1/purchase-attempts/${missingAttempt.body.attempt.id}/execute`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', missing.csrfToken).expect(409)
+      .expect(({ body }) => expect(body.error.code).toBe('HUMAN_APPROVAL_REQUIRED'));
+    expect(await database.db.select().from(paymentCredentials)).toHaveLength(0);
+
+    const revoked = await prepare(provider, 'payment-revoked@example.com');
+    const revokedAttempt = await revoked.client
+      .post(`/api/v1/purchase-intents/${revoked.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', revoked.csrfToken)
+      .send({ offerId: revoked.offerId }).expect(201);
+    await revoked.client.post(`/api/v1/purchase-attempts/${revokedAttempt.body.attempt.id}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', revoked.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+    await database.db.insert(mandateRevocations).values({
+      mandateId: revoked.mandateId,
+      revokedByUserId: revoked.userId,
+      reason: 'Revoke before payment',
+    });
+    await revoked.client.post(`/api/v1/purchase-attempts/${revokedAttempt.body.attempt.id}/execute`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', revoked.csrfToken).expect(409)
+      .expect(({ body }) => expect(body.error.code).toBe('MANDATE_REVOKED'));
+    expect(await database.db.select().from(paymentCredentials)).toHaveLength(0);
   });
 });

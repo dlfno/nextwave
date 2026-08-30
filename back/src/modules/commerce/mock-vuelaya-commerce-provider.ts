@@ -7,6 +7,7 @@ import type {
   AuthoritativeQuote,
   CommerceOfferReference,
   CommerceProvider,
+  CompleteCheckoutRequest,
   CreateCheckoutRequest,
   SignedCheckout,
 } from './commerce-types.js';
@@ -99,6 +100,14 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
   async verifyCheckout(checkout: SignedCheckout): Promise<boolean> {
     return this.signer.verify(checkout.signedPayload, checkout.payload);
   }
+
+  async completeCheckout(request: CompleteCheckoutRequest) {
+    if (request.merchantId !== this.merchantId || request.amountMinor < 0n
+      || request.currency !== 'USD' || !request.credentialReference) {
+      throw new HttpError(409, 'MERCHANT_PAYMENT_REJECTED', 'Merchant rejected the payment scope');
+    }
+    return { merchantOrderId: `VY-ORDER-${randomUUID()}`, completedAt: new Date() };
+  }
 }
 
 export class UnavailableCommerceProvider implements CommerceProvider {
@@ -119,5 +128,9 @@ export class UnavailableCommerceProvider implements CommerceProvider {
 
   async verifyCheckout(): Promise<boolean> {
     return false;
+  }
+
+  async completeCheckout(): Promise<never> {
+    throw new HttpError(503, 'COMMERCE_PROVIDER_UNAVAILABLE', 'Commerce provider is not configured');
   }
 }

@@ -19,6 +19,7 @@ import { VUELAYA_MERCHANT_ID } from './modules/discovery/mock-vuelaya-provider.j
 import { createMandateRouter } from './modules/mandates/mandate-router.js';
 import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
 import { createPurchaseIntentRouter } from './modules/purchase-intents/purchase-intent-router.js';
+import { createPaymentRouter, MockPaymentCredentialProvider, type PaymentCredentialProvider } from './modules/payments/index.js';
 import {
   MockPurchasingAgentProvider,
   type PurchasingAgentProvider,
@@ -32,6 +33,7 @@ interface AppDependencies {
   mandateSigner?: MandateSigner;
   discoveryEngine?: DiscoveryEngine;
   commerceProviders?: readonly CommerceProvider[];
+  paymentCredentialProvider?: PaymentCredentialProvider;
 }
 
 export function createApp({
@@ -42,6 +44,7 @@ export function createApp({
   mandateSigner = new UnavailableMandateSigner(),
   discoveryEngine = new DiscoveryEngine([new MockVuelaYaDiscoveryProvider()]),
   commerceProviders = [new UnavailableCommerceProvider(VUELAYA_MERCHANT_ID)],
+  paymentCredentialProvider = new MockPaymentCredentialProvider(),
 }: AppDependencies): Express {
   const app = express();
 
@@ -61,6 +64,9 @@ export function createApp({
   app.use('/api/v1', createDiscoveryRouter(database, discoveryEngine));
   app.use('/api/v1', createCheckoutRouter(database, commerceProviders));
   app.use('/api/v1', createAuthorizationRouter(database, mandateSigner, commerceProviders));
+  app.use('/api/v1', createPaymentRouter(
+    database, mandateSigner, commerceProviders, paymentCredentialProvider,
+  ));
 
   app.use(notFoundHandler);
   app.use(errorHandler);
