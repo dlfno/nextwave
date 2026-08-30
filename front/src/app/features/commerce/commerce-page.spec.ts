@@ -36,6 +36,29 @@ describe('CommercePage demo circuit', () => {
     expect(page.error()).toContain('authoritative checkout');
   });
 
+  it('distinguishes live carrier research from sandbox and demo checkout offers', () => {
+    const duffel = {
+      ...page.offers()[0],
+      providerId: 'duffel-flights',
+      merchantName: 'Duffel Flights',
+      supportsAuthoritativeCheckout: false,
+      rawPayload: { attributes: {
+        liveMode: true,
+        operatingCarriers: ['Aeroméxico', 'United Airlines'],
+        departureLocal: '2026-09-15T12:45:00',
+      } },
+    };
+
+    expect(page.sourceLabel(duffel)).toBe('Live carrier offer');
+    expect(page.carrierLabel(duffel)).toBe('Aeroméxico + United Airlines');
+    expect(page.departureClock(duffel)).toBe('12:45');
+    expect(page.isLiveOffer(duffel)).toBeTrue();
+    expect(page.sourceLabel({
+      ...duffel, rawPayload: { attributes: { liveMode: false } },
+    })).toBe('Duffel sandbox');
+    expect(page.sourceLabel(page.offers()[0])).toBe('Demo checkout');
+  });
+
   it('deterministically denies an over-limit authoritative checkout', () => {
     page.choose(page.offers()[1]);
     jasmine.clock().tick(451);

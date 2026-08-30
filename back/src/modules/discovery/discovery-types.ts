@@ -26,11 +26,13 @@ export type DiscoveredOffer = z.infer<typeof discoveredOfferSchema>;
 
 export interface DiscoveryContext {
   readonly observedAt: Date;
+  readonly correlationId?: string;
 }
 
 export interface DiscoveryProvider {
   readonly id: string;
   readonly tier?: 'PRIMARY' | 'FALLBACK';
+  readonly providerTimeoutMs?: number;
   search(
     specification: SearchSpecification,
     context: DiscoveryContext,

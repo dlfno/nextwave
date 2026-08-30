@@ -16,13 +16,17 @@ export class CommercePage implements OnInit {
   readonly decision = signal<MandateDecision | null>(null); readonly result = signal<PurchaseResult | null>(null);
   readonly busy = signal(false); readonly error = signal(''); readonly approvalOpen = signal(false);
   readonly discoveryContext = signal<DiscoveryResult['context'] | null>(null);
+  readonly providerOutcomes = signal<DiscoveryResult['providerOutcomes']>([]);
+  readonly providerFailures = computed(() => this.providerOutcomes().filter(
+    (provider) => provider.status === 'FAILED' || provider.status === 'TIMED_OUT',
+  ));
   readonly discoverySteps = signal(['Connecting to merchant adapters', 'Normalizing offers']);
   readonly passedChecks = computed(() => this.decision()?.checks.filter((check) => check.passed).length ?? 0);
 
   constructor(route: ActivatedRoute, private readonly api: ApiClient, private readonly demoState: DemoMandateState) { this.intentId = route.snapshot.paramMap.get('intentId') ?? 'demo'; this.demo = this.intentId === 'demo'; }
   ngOnInit(): void {
     if (this.demo) { this.offers.set(this.demoOffers()); this.discoverySteps.set(['Merchant adapters connected', '2 offers normalized', 'Ranking complete']); this.phase.set('OFFERS'); return; }
-    this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers, providerOutcomes, context }) => { this.offers.set(offers); this.discoveryContext.set(context); const connected = providerOutcomes.filter((provider) => provider.status === 'SUCCEEDED').length; this.discoverySteps.set([`${connected} merchant adapters responded`, `${offers.length} offers normalized`, 'Mandate screening and ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
+    this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers, providerOutcomes, context }) => { this.offers.set(offers); this.providerOutcomes.set(providerOutcomes); this.discoveryContext.set(context); const connected = providerOutcomes.filter((provider) => provider.status === 'SUCCEEDED').length; this.discoverySteps.set([`${connected} merchant adapters responded`, `${offers.length} offers normalized`, 'Mandate screening and ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
   }
   choose(offer: Offer): void {
     if (!offer.supportsAuthoritativeCheckout) {
@@ -55,19 +59,53 @@ export class CommercePage implements OnInit {
     if (this.demo) { if (this.demoState.get('ACTIVE') === 'REVOKED') { this.decision.set(this.revokedDecision(this.selected()!)); this.busy.set(false); return; } window.setTimeout(() => { this.result.set(this.demoResult()); this.phase.set('SUCCESS'); this.busy.set(false); }, 550); return; }
     this.api.executePurchase(attempt.attempt.id).pipe(finalize(() => this.busy.set(false))).subscribe({ next: (result) => { this.result.set(result); this.phase.set('SUCCESS'); }, error: (error: Error) => this.error.set(error.message) });
   }
-  money(value: string): number { return Number(value) / 100; }
+  money(value: string, currency = 'USD'): number {
+    const exponent = new Intl.NumberFormat('en', { style: 'currency', currency })
+      .resolvedOptions().maximumFractionDigits ?? 2;
+    return Number(value) / 10 ** exponent;
+  }
   reasonLabel(reason: string): string { return reason.toLowerCase().replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase()); }
   departure(offer: Offer): string { return offer.rawPayload?.departureTime ?? (offer.merchantProductId.includes('130') ? '2026-09-15T14:00:00Z' : '2026-09-15T16:00:00Z'); }
-  merchantMark(offer: Offer | null): string { return (offer?.merchantName ?? 'Merchant').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase(); }
+  departureClock(offer: Offer): string {
+    const local = offer.rawPayload?.attributes?.['departureLocal'];
+    if (typeof local === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(local)) {
+      return local.slice(11, 16);
+    }
+    return new Intl.DateTimeFormat('en', {
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC',
+    }).format(new Date(this.departure(offer)));
+  }
+  carrierLabel(offer: Offer): string {
+    const carriers = offer.rawPayload?.attributes?.['operatingCarriers'];
+    return Array.isArray(carriers) && carriers.every((carrier) => typeof carrier === 'string')
+      ? carriers.join(' + ') : offer.merchantName;
+  }
+  sourceLabel(offer: Offer): string {
+    if (offer.providerId === 'duffel-flights') {
+      return offer.rawPayload?.attributes?.['liveMode'] === true
+        ? 'Live carrier offer' : 'Duffel sandbox';
+    }
+    if (offer.sourceType === 'WEB') return 'Web research';
+    return offer.supportsAuthoritativeCheckout ? 'Demo checkout' : 'Discovery only';
+  }
+  isLiveOffer(offer: Offer): boolean {
+    return offer.providerId === 'duffel-flights'
+      && offer.rawPayload?.attributes?.['liveMode'] === true;
+  }
+  isSandboxOffer(offer: Offer): boolean {
+    return offer.providerId === 'duffel-flights'
+      && offer.rawPayload?.attributes?.['liveMode'] === false;
+  }
+  merchantMark(offer: Offer | null): string { return (offer ? this.carrierLabel(offer) : 'Merchant').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase(); }
   origin(): string { return this.discoveryContext()?.searchSpecification.origin.iata ?? 'MEX'; }
   destination(): string { return this.discoveryContext()?.searchSpecification.destination.iata ?? 'COR'; }
   passengers(): number { return this.discoveryContext()?.searchSpecification.passengers ?? 1; }
   departureDate(): string { return this.discoveryContext()?.searchSpecification.departureDate ?? '2026-09-15'; }
-  mandateMaximum(): number { return this.money(this.discoveryContext()?.authorizationSpecification.spendConstraints.maxTotalMinor ?? '15000'); }
+  mandateMaximum(): number { return this.money(this.discoveryContext()?.authorizationSpecification.spendConstraints.maxTotalMinor ?? '15000', this.mandateCurrency()); }
   mandateCurrency(): string { return this.discoveryContext()?.authorizationSpecification.spendConstraints.currency ?? 'USD'; }
   isEligible(offer: Offer): boolean { return offer.rawPayload?.preliminaryCompliance?.decision !== 'INELIGIBLE'; }
 
-  private demoOffers(): Offer[] { const base = { merchantId: 'vuelaya', merchantName: 'VuelaYa', category: 'travel.flight', currency: 'USD', availability: 'IN_STOCK', sourceType: 'MOCK', observedAt: new Date().toISOString(), confidence: 1, supportsAuthoritativeCheckout: true, authoritative: false as const }; return [
+  private demoOffers(): Offer[] { const base = { providerId: 'mock-vuelaya', merchantId: 'vuelaya', merchantName: 'VuelaYa', category: 'travel.flight', currency: 'USD', availability: 'IN_STOCK', sourceType: 'MOCK', observedAt: new Date().toISOString(), confidence: 1, supportsAuthoritativeCheckout: true, authoritative: false as const }; return [
     { ...base, id: 'offer-130', merchantProductId: 'VY-MEX-COR-130', productName: 'Mexico City to Córdoba', description: 'Economy, one stop in Lima', unitPriceMinor: '13000', rank: 1, rawPayload: { departureTime: '2026-09-15T14:00:00Z' } },
     { ...base, id: 'offer-300', merchantProductId: 'VY-MEX-COR-300', productName: 'Mexico City to Córdoba Premium', description: 'Premium cabin, flexible ticket', unitPriceMinor: '30000', rank: 2, rawPayload: { departureTime: '2026-09-15T16:00:00Z' } },
   ]; }

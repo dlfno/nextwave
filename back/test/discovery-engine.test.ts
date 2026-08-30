@@ -5,6 +5,7 @@ import { MockVuelaYaDiscoveryProvider } from '../src/modules/discovery/mock-vuel
 import { MockAeroSurDiscoveryProvider, MockNubeViaUcpDiscoveryProvider } from '../src/modules/discovery/mock-multi-merchant-providers.js';
 import type { DiscoveredOffer, DiscoveryProvider } from '../src/modules/discovery/discovery-types.js';
 import type { SearchSpecification } from '../src/modules/purchase-intents/specifications.js';
+import { HttpError } from '../src/shared/http-error.js';
 
 const specification: SearchSpecification = {
   query: 'Mexico City to Córdoba flight',
@@ -95,6 +96,31 @@ describe('DiscoveryEngine', () => {
     expect(result.outcomes).toEqual([
       { providerId: 'stalled-provider', status: 'TIMED_OUT', offerCount: 0 },
       { providerId: 'mock-aerosur-api', status: 'SUCCEEDED', offerCount: 1 },
+    ]);
+  });
+
+  it('honors a provider-specific timeout and exposes only a safe failure code', async () => {
+    const slowButAllowed: DiscoveryProvider = {
+      id: 'slow-provider',
+      providerTimeoutMs: 40,
+      search: () => new Promise((resolve) => setTimeout(() => resolve([offer()]), 20)),
+    };
+    const failed: DiscoveryProvider = {
+      id: 'failed-provider',
+      async search() {
+        throw new HttpError(502, 'DUFFEL_AUTH_FAILED', 'Provider authentication failed', {
+          private: 'not included in the outcome',
+        });
+      },
+    };
+
+    const result = await new DiscoveryEngine([slowButAllowed, failed], 5)
+      .discoverWithOutcomes(specification, context);
+
+    expect(result.offers).toHaveLength(1);
+    expect(result.outcomes).toEqual([
+      { providerId: 'slow-provider', status: 'SUCCEEDED', offerCount: 1 },
+      { providerId: 'failed-provider', status: 'FAILED', offerCount: 0, failureCode: 'DUFFEL_AUTH_FAILED' },
     ]);
   });
 

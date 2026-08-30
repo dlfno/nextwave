@@ -71,30 +71,45 @@
         </div>
         <span>Discovery data, not a payment quote</span>
       </div>
+      @if (providerFailures().length) {
+        <div class="demo-notice provider-warning" role="status">
+          <strong>Some external sources did not respond.</strong>
+          <span>
+            @for (provider of providerFailures(); track provider.providerId) {
+              {{ provider.providerId }} · {{ provider.failureCode ?? provider.status }}
+            }
+          </span>
+        </div>
+      }
       <div class="offers-layout">
         <div class="offer-list">
           @for (offer of offers(); track offer.id) {
-            <article class="offer-card" [class.recommended]="offer.rank === 1">
+            <article
+              class="offer-card"
+              [class.recommended]="offer.rank === 1"
+              [class.live-offer]="isLiveOffer(offer)"
+              [class.sandbox-offer]="isSandboxOffer(offer)"
+            >
               <div class="rank">{{ offer.rank === 1 ? 'Best eligible match' : 'Alternative' }}</div>
               <div class="airline">
                 <div class="airline-mark">{{ merchantMark(offer) }}</div>
                 <div>
-                  <strong>{{ offer.merchantName }}</strong
-                  ><small>{{ offer.sourceType }} adapter</small>
+                  <strong>{{ carrierLabel(offer) }}</strong
+                  ><small>{{ offer.merchantName }} · {{ sourceLabel(offer) }}</small>
                 </div>
               </div>
               <div class="flight-times">
                 <div>
-                  <strong>{{ departure(offer) | date: 'HH:mm' : 'UTC' }}</strong
+                  <strong>{{ departureClock(offer) }}</strong
                   ><span>{{ origin() }}</span>
                 </div>
                 <div class="flight-line">
-                  <span>Authoritative refresh</span><i><b>✦</b></i
+                  <span>{{ offer.supportsAuthoritativeCheckout ? 'Authoritative refresh' : 'Provider offer' }}</span><i><b>✦</b></i
                   ><small>{{ departureDate() | date: 'MMM d' : 'UTC' }}</small>
                 </div>
                 <div>
-                  <strong>{{ passengers() }}</strong
-                  ><span>{{ destination() }}</span>
+                  <strong>{{ destination() }}</strong
+                  ><span>{{ passengers() }} traveler{{ passengers() === 1 ? '' : 's' }}</span>
                 </div>
               </div>
               <p>{{ offer.description }}</p>
@@ -103,7 +118,7 @@
                   <span>Observed price</span
                   ><strong
                     >{{ offer.currency }}
-                    {{ money(offer.unitPriceMinor) | number: '1.2-2' }}</strong
+                    {{ money(offer.unitPriceMinor, offer.currency) | number: '1.2-2' }}</strong
                   >
                 </div>
                 <div class="compliance">

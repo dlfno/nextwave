@@ -95,6 +95,7 @@ export interface MandateDetail {
 }
 export interface Offer {
   id: string;
+  providerId: string;
   merchantId: string;
   merchantName: string;
   merchantProductId: string;
@@ -130,6 +131,7 @@ export interface DiscoveryResult {
     providerId: string;
     status: 'SUCCEEDED' | 'TIMED_OUT' | 'FAILED' | 'SKIPPED';
     offerCount: number;
+    failureCode?: string;
   }[];
   context: {
     searchSpecification: SearchSpecification;

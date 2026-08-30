@@ -74,3 +74,28 @@ describe('web discovery configuration', () => {
     })).toThrow();
   });
 });
+
+describe('Duffel flight discovery configuration', () => {
+  it('is disabled by default and preserves a configured backend token', () => {
+    expect(loadConfig(requiredEnvironment).duffelAccessToken).toBeUndefined();
+    expect(loadConfig({ ...requiredEnvironment, DUFFEL_ACCESS_TOKEN: '' }).duffelAccessToken)
+      .toBeUndefined();
+    expect(loadConfig({
+      ...requiredEnvironment,
+      DUFFEL_ACCESS_TOKEN: 'duffel_live_example',
+    })).toMatchObject({
+      duffelAccessToken: 'duffel_live_example',
+      duffelSupplierTimeoutMs: 10_000,
+      duffelSearchTimeoutMs: 15_000,
+      duffelMaxOffers: 20,
+    });
+  });
+
+  it('requires the HTTP timeout to exceed Duffel supplier processing time', () => {
+    expect(() => loadConfig({
+      ...requiredEnvironment,
+      DUFFEL_SUPPLIER_TIMEOUT_MS: '10000',
+      DUFFEL_SEARCH_TIMEOUT_MS: '10000',
+    })).toThrow();
+  });
+});

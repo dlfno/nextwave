@@ -751,6 +751,8 @@
    MCP                     Optional external agent tools                              P2
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
    Crawling                Discovery fallback only                                    Safe opt-in HTML/JSON-LD fallback; never authoritative
+  ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
+   Duffel                  Live carrier discovery                                     Optional server-side live/sandbox search; discovery-only until booking adapter
 
   ## 11. Milestones
 
@@ -805,6 +807,7 @@
   - Separately deployed NubeVia UCP 2026-04-08 merchant with AP2 mandate verification.
   - Optional Stripe PaymentIntent/SPT test provider when private-preview access is available.
   - Safe, opt-in web discovery fallback with SSRF and robots protections; results cannot pay.
+  - Optional Duffel carrier search with truthful live/sandbox labeling and a hard discovery-only boundary.
 
   ### Remaining P1
 

@@ -179,6 +179,35 @@ Every result is labeled `sourceType: WEB`, has reduced confidence, and sets
 payment until a separate merchant adapter refreshes it into an authoritative
 checkout.
 
+### Live Duffel flight research
+
+Set a Duffel access token to add current carrier offers to the structured primary
+providers:
+
+```dotenv
+DUFFEL_ACCESS_TOKEN=duffel_live_...
+DUFFEL_SUPPLIER_TIMEOUT_MS=10000
+DUFFEL_SEARCH_TIMEOUT_MS=15000
+DUFFEL_MAX_OFFERS=20
+```
+
+For Docker, put these values in the repository-root `.env`; for local API
+development, use `back/.env`. The token is sent only from Express to Duffel and
+must never be placed in Angular. An empty token leaves the provider disabled.
+
+Duffel test tokens exercise the same adapter but return sandbox schedules and
+prices. Only an activated account and live token return current airline data.
+The account billing currency must match the mandate currency for results to pass
+normalization; the demo expects USD.
+
+The adapter requests one-way economy offers for the canonical route, date, and
+adult passenger count. It stores only normalized itinerary metadata, explicitly
+labels live versus sandbox data, and uses Duffel's total for all passengers as
+the amount screened against the mandate. Duffel offers are research-only in this
+milestone: `supportsAuthoritativeCheckout` remains false, so they cannot cross
+into the AP2/UCP payment circuit. The local VuelaYa, AeroSur, and NubeVia offers
+remain available as clearly labeled demo-checkout options.
+
 Milestone 20 upgrades NubeVia to the UCP `2026-04-08` REST checkout and AP2
 Mandates Extension boundary. In the
 container demo, Compose starts the merchant automatically and configures

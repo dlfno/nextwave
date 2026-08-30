@@ -4,7 +4,8 @@ INSERT INTO merchants (id, slug, name, status)
 VALUES
   ('10000000-0000-4000-8000-000000000001', 'vuela-ya', 'VuelaYa', 'ACTIVE'),
   ('10000000-0000-4000-8000-000000000002', 'aerosur', 'AeroSur', 'ACTIVE'),
-  ('10000000-0000-4000-8000-000000000003', 'nubevia', 'NubeVia', 'ACTIVE')
+  ('10000000-0000-4000-8000-000000000003', 'nubevia', 'NubeVia', 'ACTIVE'),
+  ('10000000-0000-4000-8000-000000000004', 'duffel-flights', 'Duffel Flights', 'ACTIVE')
 ON CONFLICT (id) DO UPDATE SET
   slug = EXCLUDED.slug,
   name = EXCLUDED.name,
@@ -16,7 +17,8 @@ INSERT INTO merchant_capabilities (
 VALUES
   ('11000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'dev.ucp.shopping.checkout', 'UCP', '2026-04-08', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb),
   ('11000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'merchant.flight.search', 'REST', '1', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb),
-  ('11000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'dev.ucp.shopping.checkout', 'UCP', '2026-04-08', '{"mode":"http","supportsAuthoritativeCheckout":true,"ap2Mandates":true}'::jsonb)
+  ('11000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'dev.ucp.shopping.checkout', 'UCP', '2026-04-08', '{"mode":"http","supportsAuthoritativeCheckout":true,"ap2Mandates":true}'::jsonb),
+  ('11000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000004', 'merchant.flight.search', 'REST', 'v2', '{"mode":"external","supportsAuthoritativeCheckout":false}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
   merchant_id = EXCLUDED.merchant_id,
   capability = EXCLUDED.capability,

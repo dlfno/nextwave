@@ -26,6 +26,13 @@ const environmentSchema = z.object({
   OPENAI_RESEARCH_MODEL: z.string().min(1).optional(),
   OPENAI_AGENT_MODEL: z.string().min(1).optional(),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
+  DUFFEL_ACCESS_TOKEN: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().min(1).optional(),
+  ),
+  DUFFEL_SUPPLIER_TIMEOUT_MS: z.coerce.number().int().min(2_000).max(60_000).default(10_000),
+  DUFFEL_SEARCH_TIMEOUT_MS: z.coerce.number().int().min(3_000).max(65_000).default(15_000),
+  DUFFEL_MAX_OFFERS: z.coerce.number().int().min(1).max(50).default(20),
   PAYMENT_CREDENTIAL_PROVIDER: z.enum(['mock', 'stripe-spt-test']).default('mock'),
   STRIPE_SECRET_KEY: z.preprocess(
     (value) => value === '' ? undefined : value,
@@ -43,6 +50,12 @@ const environmentSchema = z.object({
       message: 'STRIPE_SECRET_KEY is required when Stripe SPT test mode is selected',
     });
   }
+  if (value.DUFFEL_SEARCH_TIMEOUT_MS <= value.DUFFEL_SUPPLIER_TIMEOUT_MS) {
+    context.addIssue({
+      code: 'custom', path: ['DUFFEL_SEARCH_TIMEOUT_MS'],
+      message: 'DUFFEL_SEARCH_TIMEOUT_MS must exceed DUFFEL_SUPPLIER_TIMEOUT_MS',
+    });
+  }
 });
 
 export interface AppConfig {
@@ -56,6 +69,10 @@ export interface AppConfig {
   openaiClarificationModel?: string;
   openaiResearchModel?: string;
   openaiTimeoutMs?: number;
+  duffelAccessToken?: string;
+  duffelSupplierTimeoutMs?: number;
+  duffelSearchTimeoutMs?: number;
+  duffelMaxOffers?: number;
   paymentCredentialProvider?: 'mock' | 'stripe-spt-test';
   stripeSecretKey?: string;
   stripeSptTestPaymentMethod?: string;
@@ -79,6 +96,10 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     openaiClarificationModel: parsed.OPENAI_CLARIFICATION_MODEL ?? parsed.OPENAI_AGENT_MODEL ?? 'gpt-5.6-luna',
     openaiResearchModel: parsed.OPENAI_RESEARCH_MODEL ?? 'gpt-5.6-terra',
     openaiTimeoutMs: parsed.OPENAI_TIMEOUT_MS,
+    ...(parsed.DUFFEL_ACCESS_TOKEN ? { duffelAccessToken: parsed.DUFFEL_ACCESS_TOKEN } : {}),
+    duffelSupplierTimeoutMs: parsed.DUFFEL_SUPPLIER_TIMEOUT_MS,
+    duffelSearchTimeoutMs: parsed.DUFFEL_SEARCH_TIMEOUT_MS,
+    duffelMaxOffers: parsed.DUFFEL_MAX_OFFERS,
     paymentCredentialProvider: parsed.PAYMENT_CREDENTIAL_PROVIDER,
     ...(parsed.STRIPE_SECRET_KEY ? { stripeSecretKey: parsed.STRIPE_SECRET_KEY } : {}),
     stripeSptTestPaymentMethod: parsed.STRIPE_SPT_TEST_PAYMENT_METHOD,

@@ -15,6 +15,7 @@ import {
 } from './modules/commerce/index.js';
 import {
   DiscoveryEngine,
+  DuffelFlightDiscoveryProvider,
   MockAeroSurDiscoveryProvider,
   MockNubeViaUcpDiscoveryProvider,
   MockVuelaYaDiscoveryProvider,
@@ -77,12 +78,23 @@ const discoveryEngine = new DiscoveryEngine([
   nubeViaBaseUrl
     ? new HttpUcpDiscoveryProvider(nubeViaBaseUrl)
     : new MockNubeViaUcpDiscoveryProvider(),
+  ...(config.duffelAccessToken ? [new DuffelFlightDiscoveryProvider({
+    accessToken: config.duffelAccessToken,
+    supplierTimeoutMs: config.duffelSupplierTimeoutMs ?? 10_000,
+    searchTimeoutMs: config.duffelSearchTimeoutMs ?? 15_000,
+    maxOffers: config.duffelMaxOffers ?? 20,
+  })] : []),
   ...((config.webDiscoverySources?.length ?? 0) > 0 ? [new WebDiscoveryProvider(
     config.webDiscoverySources!,
     { timeoutMs: config.webDiscoveryTimeoutMs ?? 4_000,
       maxResponseBytes: config.webDiscoveryMaxBytes ?? 512_000 },
   )] : []),
 ]);
+logger.info({
+  enabled: Boolean(config.duffelAccessToken),
+  provider: 'duffel-flights',
+  maxOffers: config.duffelMaxOffers,
+}, 'Live flight discovery configured');
 const paymentCredentialProvider = config.paymentCredentialProvider === 'stripe-spt-test'
   ? new StripeSPTProvider({
       apiKey: config.stripeSecretKey!,

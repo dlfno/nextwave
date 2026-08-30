@@ -46,7 +46,10 @@ export class DiscoveryService {
     if (!run) throw new Error('Discovery run insert did not return a row');
 
     try {
-      const discovery = await this.engine.discoverWithOutcomes(specification.data, { observedAt: startedAt });
+      const discovery = await this.engine.discoverWithOutcomes(specification.data, {
+        observedAt: startedAt,
+        correlationId: run.id,
+      });
       const activeMerchants = await this.activeMerchants(discovery.offers);
       const screenedOffers = discovery.offers
         .filter((offer) => activeMerchants.has(offer.merchantId))

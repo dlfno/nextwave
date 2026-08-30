@@ -1,3 +1,4 @@
+import { HttpError } from '../../shared/http-error.js';
 import type { SearchSpecification } from '../purchase-intents/specifications.js';
 import { discoveredOfferSchema, type DiscoveryContext, type DiscoveryProvider, type RankedOffer } from './discovery-types.js';
 
@@ -61,7 +62,10 @@ export class DiscoveryEngine {
         const offers = await Promise.race([
           provider.search(specification, context),
           new Promise<never>((_resolve, reject) => {
-            timeout = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT')), this.providerTimeoutMs);
+            timeout = setTimeout(
+              () => reject(new Error('PROVIDER_TIMEOUT')),
+              provider.providerTimeoutMs ?? this.providerTimeoutMs,
+            );
           }),
         ]);
         return { providerId: provider.id, offers };
@@ -69,13 +73,18 @@ export class DiscoveryEngine {
         if (timeout) clearTimeout(timeout);
       }
     }));
-    const outcomes = settled.map((result, index) => ({
-      providerId: providers[index]!.id,
-      status: result.status === 'fulfilled' ? 'SUCCEEDED' as const
-        : result.reason instanceof Error && result.reason.message === 'PROVIDER_TIMEOUT'
-          ? 'TIMED_OUT' as const : 'FAILED' as const,
-      offerCount: result.status === 'fulfilled' ? result.value.offers.length : 0,
-    }));
+    const outcomes = settled.map((result, index) => {
+      const failureCode = result.status === 'rejected' && result.reason instanceof HttpError
+        ? result.reason.code : undefined;
+      return {
+        providerId: providers[index]!.id,
+        status: result.status === 'fulfilled' ? 'SUCCEEDED' as const
+          : result.reason instanceof Error && result.reason.message === 'PROVIDER_TIMEOUT'
+            ? 'TIMED_OUT' as const : 'FAILED' as const,
+        offerCount: result.status === 'fulfilled' ? result.value.offers.length : 0,
+        ...(failureCode ? { failureCode } : {}),
+      };
+    });
     return { settled, outcomes };
   }
 
