@@ -46,6 +46,13 @@ export interface PurchaseResult {
   receipt: { id: string; payloadHash: string; issuedAt: string };
   credential: { provider: string; merchantId: string; maxAmountMinor: string; currency: string; status: string; expiresAt: string };
 }
+export interface TransactionRecord { id: string; attemptId: string; provider: string; providerReference: string | null; status: string; amountMinor: string; currency: string; failureCode: string | null; createdAt: string; processedAt: string | null; }
+export interface OrderRecord { id: string; merchantOrderId: string; status: string; totalMinor: string; currency: string; createdAt: string; items: { productName: string; quantity: number; totalMinor: string; currency: string }[]; }
+export interface ReceiptRecord { id: string; orderId: string; transactionId: string; receiptType: string; payloadHash: string; rawPayload: Record<string, unknown>; issuedAt: string; }
+export interface AuditEvent { id: string; eventType: string; occurredAt: string; actorType: string; actorId: string | null; intentId: string; mandateId: string | null; mandateVersionId: string | null; attemptId: string | null; transactionId: string | null; correlationId: string; payload: Record<string, unknown>; previousHash: string | null; eventHash: string; }
+export interface AuditProjection { integrity: { valid: boolean; eventCount: number; failedEventId: string | null }; events: AuditEvent[]; }
+export interface TransactionDetail { transaction: TransactionRecord; order: OrderRecord | null; receipt: ReceiptRecord | null; }
+export interface DisputeRecord { id: string; transactionId: string; status: string; reasonCode: string; statement: string | null; openedAt: string; resolvedAt?: string | null; resolutionSummary?: string | null; }
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -111,6 +118,15 @@ export class ApiClient {
   executePurchase(attemptId: string): Observable<PurchaseResult> {
     return this.request('post', `/purchase-attempts/${attemptId}/execute`, {});
   }
+  listTransactions(): Observable<{ transactions: TransactionRecord[] }> { return this.request('get', '/transactions'); }
+  getTransaction(id: string): Observable<TransactionDetail> { return this.request('get', `/transactions/${id}`); }
+  getTransactionAudit(id: string): Observable<AuditProjection> { return this.request('get', `/transactions/${id}/audit`); }
+  getMerchantVerification(attemptId: string): Observable<AuditProjection> { return this.request('get', `/merchant/verifications/${attemptId}`); }
+  getAuditorEvidence(transactionId: string): Observable<AuditProjection & { facts: Record<string, unknown> }> { return this.request('get', `/auditor/transactions/${transactionId}/evidence`); }
+  openDispute(transactionId: string, reasonCode: string, statement?: string): Observable<{ dispute: DisputeRecord; evidence: { bundle: Record<string, unknown>; bundleHash: string; verificationResult: { valid: boolean; eventCount: number } } }> {
+    return this.request('post', `/transactions/${transactionId}/disputes`, { reasonCode, ...(statement ? { statement } : {}) });
+  }
+  getDispute(id: string): Observable<{ dispute: DisputeRecord; evidence: { bundle: Record<string, unknown>; bundleHash: string; verificationResult: { valid: boolean; eventCount: number } } }> { return this.request('get', `/disputes/${id}`); }
 
   private request<T>(method: 'get' | 'post', path: string, body?: unknown): Observable<T> {
     const headers = method === 'post' ? new HttpHeaders({ 'x-csrf-token': this.cookie('nextwave_csrf') }) : undefined;

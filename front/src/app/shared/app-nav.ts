@@ -11,7 +11,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
         <a routerLink="/agent" routerLinkActive="active">Agent</a>
         <a routerLink="/intent" routerLinkActive="active">Intent</a>
         <a routerLink="/mandates" routerLinkActive="active">Mandates</a>
-        <button type="button" disabled title="Available in a later milestone">Activity</button>
+        <a routerLink="/activity" routerLinkActive="active">Activity</a>
       </nav>
       <a class="account" routerLink="/auth"><span>MP</span><b>{{ userName() }}</b></a>
     </header>
