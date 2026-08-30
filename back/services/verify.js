@@ -1,11 +1,13 @@
 const { db, ensureKeys } = require('../db');
 const { verify } = require('../lib/crypto');
 const { mandatePayload } = require('./mandates');
-const conditions = require('../lib/conditions');
+const spec = require('../lib/spec');
 
 // Verificación completa del merchant antes de aceptar una compra agéntica.
 // Devuelve { status: 'approved' | 'rejected' | 'pending_approval', reason, checks }.
 // Regla de oro: nada se aprueba en silencio — cada check queda registrado.
+// El orden es deliberado (DECISIONS #8) y no cambió al pasar al modelo por producto:
+// lo único que se generalizó es el paso 4 (tipo de producto) y el 7 (spec tipada).
 
 function verifyPurchase({ cart, agent_signature }) {
   const checks = [];
@@ -41,10 +43,14 @@ function verifyPurchase({ cart, agent_signature }) {
   checks.push({ name: 'mandato vigente', ok: inWindow, detail: `válido hasta ${mandate.valid_until}` });
   if (!inWindow) return fail('mandato expirado o aún no vigente');
 
-  // 4. Categoría
-  const catOk = cart.category === mandate.category;
-  checks.push({ name: `categoría permitida (${mandate.category})`, ok: catOk, detail: `compra: ${cart.category}` });
-  if (!catOk) return fail(`categoría "${cart.category}" fuera del mandato (permite: ${mandate.category})`);
+  // 4. Tipo de producto
+  const typeOk = cart.product_type === mandate.product_type;
+  checks.push({
+    name: `tipo de producto permitido (${mandate.product_type})`,
+    ok: typeOk,
+    detail: `compra: ${cart.product_type}`,
+  });
+  if (!typeOk) return fail(`producto "${cart.product_type}" fuera del mandato (permite: ${mandate.product_type})`);
 
   // 5. Límite por compra → fuera de límite NO se rechaza en seco: se escala al humano
   const amountOk = cart.amount <= mandate.max_amount;
@@ -66,11 +72,15 @@ function verifyPurchase({ cart, agent_signature }) {
   });
   if (!budgetOk) return fail('excede el presupuesto total del mandato');
 
-  // 7. Condiciones ricas
-  const condChecks = conditions.evaluate(mandate, cart);
-  checks.push(...condChecks);
-  const badCond = condChecks.find((c) => !c.ok);
-  if (badCond) return fail(`no cumple ${badCond.name} (${badCond.detail})`);
+  // 7. Spec del mandato contra los atributos reales del ítem (marca, aerolínea, gramaje…),
+  // más el tope de frecuencia. El precio entra como un atributo más del carrito.
+  const attributes = { ...(cart.attributes || {}), price: cart.amount };
+  const specChecks = spec.evaluate(JSON.parse(mandate.spec_json || '[]'), attributes);
+  const freq = spec.frequencyCheck(mandate);
+  if (freq) specChecks.push(freq);
+  checks.push(...specChecks);
+  const bad = specChecks.find((c) => !c.ok);
+  if (bad) return fail(`no cumple ${bad.name} (${bad.detail})`);
 
   return { status: 'approved', reason: 'todos los checks del mandato pasaron', checks };
 }

@@ -2,7 +2,15 @@ import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { Api, Check, poll, setIfChanged } from '../services/api';
 
-interface Flight { id: number; origin: string; destination: string; airline: string; price: number; departs_at: string; }
+interface Product {
+  id: number;
+  product_type: string;
+  merchant: string;
+  title: string;
+  price: number;
+  currency: string;
+  attributes: Record<string, string | number>;
+}
 interface Verification {
   id: number;
   status: string;
@@ -18,24 +26,32 @@ interface Verification {
   imports: [DatePipe],
   template: `
     <div class="page">
-      <h1>✈️ VuelaYa — merchant</h1>
-      <p class="sub">
-        Acepta compras de agentes sin abrir la puerta al fraude: cada intento se verifica contra un mandato firmado.
-        Cambia un precio y mira al agente reaccionar solo.
-      </p>
+      <header class="section-head">
+        <span class="eyebrow">02 / VuelaYa · comercio</span>
+        <h1>Acepta agentes sin abrir la puerta al fraude</h1>
+        <p class="sub">
+          Cada intento de compra se verifica contra un mandato firmado.
+          Cambia un precio y mira al agente reaccionar solo.
+        </p>
+      </header>
 
       <div class="grid two">
         <div class="card">
-          <h2>Catálogo de vuelos (precio editable en vivo)</h2>
-          <table>
-            <thead><tr><th>Ruta</th><th>Aerolínea</th><th>Precio</th><th></th></tr></thead>
+          <span class="eyebrow">Catálogo</span>
+          <h2>Productos (precio editable en vivo)</h2>
+          <table class="catalogo">
+            <thead><tr><th>Producto</th><th>Atributos verificables</th><th>Precio</th><th></th></tr></thead>
             <tbody>
-              @for (f of flights(); track f.id) {
+              @for (p of products(); track p.id) {
                 <tr>
-                  <td>{{ f.origin }} → <strong>{{ f.destination }}</strong></td>
-                  <td class="muted">{{ f.airline }}</td>
-                  <td><input type="number" style="width: 85px" #pr [value]="f.price" /></td>
-                  <td><button class="ghost" (click)="setPrice(f.id, pr.value)">💲 Cambiar</button></td>
+                  <td><strong>{{ p.title }}</strong><div class="muted">{{ p.product_type }}</div></td>
+                  <td>
+                    <div class="attr-chips">
+                      @for (a of pares(p); track a[0]) { <span>{{ a[0] }}: {{ a[1] }}</span> }
+                    </div>
+                  </td>
+                  <td><input type="number" #pr [value]="p.price" /></td>
+                  <td><button class="ghost" (click)="setPrice(p.id, pr.value)">Cambiar</button></td>
                 </tr>
               }
             </tbody>
@@ -43,14 +59,15 @@ interface Verification {
         </div>
 
         <div class="card">
-          <h2>Verificaciones de compras agénticas</h2>
+          <span class="eyebrow">Verificaciones</span>
+          <h2>Compras agénticas</h2>
           <div class="log">
             @for (v of verifications(); track v.id) {
               <div class="item">
                 <div class="row spread">
                   <div>
                     <span class="badge {{ v.status }}">{{ v.status }}</span>
-                    <strong> {{ v.description }}</strong> — \${{ v.amount }}
+                    <strong> {{ v.description }}</strong> · \${{ v.amount }}
                   </div>
                   <button class="ghost" (click)="toggle(v.id)">{{ open() === v.id ? 'ocultar' : 'checks' }}</button>
                 </div>
@@ -58,7 +75,7 @@ interface Verification {
                 @if (open() === v.id) {
                   <ul class="checks">
                     @for (c of v.checks; track c.name) {
-                      <li [class]="c.ok ? 'ok' : 'fail'">{{ c.name }} — {{ c.detail }}</li>
+                      <li [class]="c.ok ? 'ok' : 'fail'">{{ c.name }} · {{ c.detail }}</li>
                     }
                   </ul>
                 }
@@ -74,15 +91,21 @@ interface Verification {
 })
 export class MerchantPage implements OnDestroy {
   private api = inject(Api);
-  flights = signal<Flight[]>([]);
+  products = signal<Product[]>([]);
   verifications = signal<Verification[]>([]);
   open = signal<number | null>(null);
 
   private stop = poll(() => this.refresh());
 
   refresh() {
-    this.api.get<Flight[]>('/merchant/flights').then((f) => setIfChanged(this.flights, f));
+    this.api.get<Product[]>('/merchant/products').then((p) => setIfChanged(this.products, p));
     this.api.get<Verification[]>('/merchant/verifications').then((v) => setIfChanged(this.verifications, v));
+  }
+
+  // Los atributos son justo lo que el mandato puede restringir; se enseñan tal cual para
+  // que se vea contra qué se verifica cada compra.
+  pares(p: Product) {
+    return Object.entries(p.attributes);
   }
 
   toggle(id: number) {
@@ -90,7 +113,7 @@ export class MerchantPage implements OnDestroy {
   }
 
   async setPrice(id: number, value: string) {
-    await this.api.patch(`/merchant/flights/${id}`, { price: Number(value) });
+    await this.api.patch(`/merchant/products/${id}`, { price: Number(value) });
     this.refresh();
   }
 

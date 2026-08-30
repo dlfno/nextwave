@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Dia AI - Intelligent Clarity</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=JetBrains+Mono:wght@400..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#ffdad6",
+                        "primary-fixed": "#e5e2e1",
+                        "on-primary-fixed-variant": "#474646",
+                        "tertiary-fixed-dim": "#c5c7c8",
+                        "on-surface-variant": "#444748",
+                        "surface-bright": "#f9f9ff",
+                        "on-surface": "#151c27",
+                        "inverse-surface": "#2a313d",
+                        "background": "#f9f9ff",
+                        "surface-container": "#e7eefe",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "on-tertiary-container": "#828485",
+                        "secondary": "#4648d4",
+                        "inverse-on-surface": "#ebf1ff",
+                        "outline-variant": "#c4c7c7",
+                        "on-error-container": "#93000a",
+                        "on-primary-fixed": "#1c1b1b",
+                        "on-error": "#ffffff",
+                        "primary-container": "#1c1b1b",
+                        "surface-dim": "#d3daea",
+                        "surface": "#f9f9ff",
+                        "error": "#ba1a1a",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "on-primary-container": "#858383",
+                        "on-secondary-container": "#fffbff",
+                        "on-tertiary": "#ffffff",
+                        "tertiary": "#000000",
+                        "on-primary": "#ffffff",
+                        "tertiary-container": "#191c1d",
+                        "surface-container-highest": "#dce2f3",
+                        "primary-fixed-dim": "#c9c6c5",
+                        "inverse-primary": "#c9c6c5",
+                        "on-background": "#151c27",
+                        "surface-variant": "#dce2f3",
+                        "on-secondary-fixed": "#07006c",
+                        "on-tertiary-fixed-variant": "#454748",
+                        "secondary-container": "#6063ee",
+                        "surface-tint": "#5f5e5e",
+                        "on-tertiary-fixed": "#191c1d",
+                        "outline": "#747878",
+                        "surface-container-high": "#e2e8f8",
+                        "secondary-fixed": "#e1e0ff",
+                        "surface-container-low": "#f0f3ff",
+                        "tertiary-fixed": "#e1e3e4",
+                        "primary": "#000000"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "max-width-content": "800px",
+                        "gutter": "24px",
+                        "unit": "4px",
+                        "margin-desktop": "64px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Geist"],
+                        "label-mono": ["JetBrains Mono"],
+                        "headline-lg-mobile": ["Geist"],
+                        "body-sm": ["Geist"],
+                        "headline-lg": ["Geist"],
+                        "display-lg": ["Geist"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "1.6", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+                        "label-mono": ["12px", { "lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "1.2", "fontWeight": "500" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.04em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #f9f9ff; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24; }
+        .code-block-bg { background-color: #151c27; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d3daea; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #c4c7c7; }
+    </style>
+</head>
+<body class="font-body-md text-body-md text-on-surface antialiased overflow-hidden flex h-screen w-full">
+<!-- SideNavBar -->
+<aside class="hidden md:flex fixed left-0 top-0 h-full p-gutter flex-col bg-surface-container-low dark:bg-surface-container w-[280px] border-r border-outline-variant z-50">
+<div class="flex items-center gap-3 mb-10 px-4 pt-4">
+<span class="material-symbols-outlined text-3xl text-primary" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<div>
+<h1 class="font-display-lg text-[24px] leading-none font-bold text-primary dark:text-primary-fixed">Dia AI</h1>
+<p class="font-label-mono text-label-mono text-on-surface-variant mt-1 uppercase">v2.4 Pro</p>
+</div>
+</div>
+<button class="mx-4 mb-8 bg-primary text-on-primary rounded-full py-3 px-4 flex items-center justify-center gap-2 hover:opacity-90 transition-opacity font-body-sm text-body-sm font-medium">
+<span class="material-symbols-outlined text-sm">add</span>
+            New Chat
+        </button>
+<nav class="flex-1 flex flex-col gap-2">
+<!-- Active Tab: Home -->
+<a class="flex items-center gap-3 py-2 text-primary dark:text-primary-fixed font-bold border-l-2 border-primary dark:border-primary-fixed pl-4 bg-surface-variant/50 rounded-r-lg group hover:text-primary dark:hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-body-sm text-body-sm">Home</span>
+</a>
+<!-- Inactive Tabs -->
+<a class="flex items-center gap-3 py-2 text-on-surface-variant dark:text-on-surface-variant font-normal pl-4 border-l-2 border-transparent group hover:text-primary dark:hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out">explore</span>
+<span class="font-body-sm text-body-sm">Discover</span>
+</a>
+<a class="flex items-center gap-3 py-2 text-on-surface-variant dark:text-on-surface-variant font-normal pl-4 border-l-2 border-transparent group hover:text-primary dark:hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out">bookmarks</span>
+<span class="font-body-sm text-body-sm">Library</span>
+</a>
+<div class="mt-auto flex flex-col gap-2">
+<a class="flex items-center gap-3 py-2 text-on-surface-variant dark:text-on-surface-variant font-normal pl-4 border-l-2 border-transparent group hover:text-primary dark:hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out">settings</span>
+<span class="font-body-sm text-body-sm">Settings</span>
+</a>
+<a class="flex items-center gap-3 py-2 text-on-surface-variant dark:text-on-surface-variant font-normal pl-4 border-l-2 border-transparent group hover:text-primary dark:hover:text-primary-fixed transition-colors" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out">help</span>
+<span class="font-body-sm text-body-sm">Help</span>
+</a>
+</div>
+</nav>
+<div class="mt-4 pt-4 border-t border-outline-variant/30 flex items-center justify-between px-4">
+<a class="flex items-center gap-3 py-2 text-on-surface-variant dark:text-on-surface-variant font-normal border-l-2 border-transparent group hover:text-primary dark:hover:text-primary-fixed transition-colors w-full" href="#">
+<span class="material-symbols-outlined scale-95 duration-150 ease-in-out">archive</span>
+<span class="font-body-sm text-body-sm">Archive</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-[280px] h-full flex flex-col relative bg-background">
+<!-- TopNavBar (Chat Header Variant) -->
+<header class="fixed top-0 right-0 w-full md:w-[calc(100%-280px)] bg-surface/80 dark:bg-background/80 backdrop-blur-xl z-40 border-b border-transparent">
+<div class="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-4 max-w-content mx-auto">
+<div class="flex items-center gap-2 md:hidden">
+<span class="material-symbols-outlined text-primary">menu</span>
+</div>
+<!-- Model Selector -->
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-container hover:bg-surface-variant transition-colors border border-outline-variant/50">
+<span class="font-label-mono text-label-mono text-on-surface font-semibold tracking-wider">Dia-1 Pro</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">expand_more</span>
+</button>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-4">
+<button class="hidden md:flex items-center gap-2 font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">ios_share</span>
+                        Share
+                    </button>
+<button class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border border-outline-variant/30 hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined text-primary">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Chat Canvas -->
+<div class="flex-1 overflow-y-auto w-full pt-[80px] pb-[160px] px-margin-mobile md:px-margin-desktop">
+<div class="max-w-[800px] mx-auto w-full flex flex-col gap-12 py-8">
+<!-- Initial Welcome / Empty State (Hidden in this flow, but structurally good to consider) -->
+<!-- Chat History -->
+<!-- User Message -->
+<div class="flex flex-col items-end w-full">
+<div class="bg-surface-container-low border border-outline-variant/40 rounded-2xl rounded-tr-sm px-6 py-4 max-w-[85%] sm:max-w-[70%]">
+<p class="font-body-md text-body-md text-on-surface">Can you write a python script to parse a CSV file containing sales data and output a summary of total revenue per region? The CSV has columns: Date, Region, Product, Units, Revenue.</p>
+</div>
+</div>
+<!-- AI Message -->
+<div class="flex flex-col items-start w-full gap-4">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-on-primary text-[18px]" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<span class="font-label-mono text-label-mono text-on-surface-variant uppercase tracking-widest">Dia AI</span>
+</div>
+<div class="w-full pl-11">
+<p class="font-body-md text-body-md text-on-surface mb-6 leading-relaxed">
+                            Here is a Python script using the built-in `csv` and `collections` modules to parse your sales data and summarize total revenue by region. I've designed it to be lightweight and not require external dependencies like Pandas for this specific task.
+                        </p>
+<!-- Code Block -->
+<div class="code-block-bg rounded-xl border border-outline-variant/20 overflow-hidden my-6 shadow-sm">
+<div class="flex items-center justify-between px-4 py-2 bg-inverse-surface/50 border-b border-outline-variant/10">
+<span class="font-label-mono text-label-mono text-on-tertiary-container lowercase">python</span>
+<button class="text-on-tertiary-container hover:text-on-secondary transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+<span class="font-label-mono text-[10px]">Copy code</span>
+</button>
+</div>
+<div class="p-4 overflow-x-auto">
+<pre class="font-label-mono text-sm text-surface-bright/90 leading-loose"><code><span class="text-secondary-fixed-dim">import</span> csv
+<span class="text-secondary-fixed-dim">from</span> collections <span class="text-secondary-fixed-dim">import</span> defaultdict
+
+<span class="text-secondary-fixed-dim">def</span> <span class="text-surface-bright">summarize_revenue_by_region</span>(csv_filepath):
+    revenue_summary = defaultdict(<span class="text-secondary-fixed">float</span>)
+    
+    <span class="text-secondary-fixed-dim">try</span>:
+        <span class="text-secondary-fixed-dim">with</span> <span class="text-secondary-fixed">open</span>(csv_filepath, mode=<span class="text-tertiary-fixed-dim">'r'</span>, encoding=<span class="text-tertiary-fixed-dim">'utf-8'</span>) <span class="text-secondary-fixed-dim">as</span> file:
+            reader = csv.DictReader(file)
+            
+            <span class="text-secondary-fixed-dim">for</span> row <span class="text-secondary-fixed-dim">in</span> reader:
+                region = row.get(<span class="text-tertiary-fixed-dim">'Region'</span>)
+                <span class="text-outline-variant"># Safely parse revenue, ignoring rows with missing/invalid data</span>
+                <span class="text-secondary-fixed-dim">try</span>:
+                    revenue = <span class="text-secondary-fixed">float</span>(row.get(<span class="text-tertiary-fixed-dim">'Revenue'</span>, <span class="text-tertiary-fixed-dim">'0'</span>).replace(<span class="text-tertiary-fixed-dim">','</span>, <span class="text-tertiary-fixed-dim">''</span>))
+                    <span class="text-secondary-fixed-dim">if</span> region:
+                        revenue_summary[region] += revenue
+                <span class="text-secondary-fixed-dim">except</span> ValueError:
+                    <span class="text-secondary-fixed-dim">continue</span>
+                    
+    <span class="text-secondary-fixed-dim">except</span> FileNotFoundError:
+        <span class="text-secondary-fixed">print</span>(<span class="text-tertiary-fixed-dim">f"Error: File not found at {csv_filepath}"</span>)
+        <span class="text-secondary-fixed-dim">return</span> <span class="text-secondary-fixed">None</span>
+        
+    <span class="text-secondary-fixed-dim">return</span> <span class="text-secondary-fixed">dict</span>(revenue_summary)
+
+<span class="text-outline-variant"># Example usage:</span>
+<span class="text-outline-variant"># result = summarize_revenue_by_region('sales_data.csv')</span>
+<span class="text-outline-variant"># print(result)</span></code></pre>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface mt-6 leading-relaxed">
+                            This script safely handles potential string formatting in the revenue column (like commas) and skips rows with malformed data. Let me know if you need to add any filtering or further aggregation.
+                        </p>
+</div>
+</div>
+</div>
+</div>
+<!-- Input Area (Floating) -->
+<div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-background via-background/90 to-transparent pt-10 pb-8 px-margin-mobile md:px-margin-desktop z-40">
+<div class="max-w-[800px] mx-auto w-full flex flex-col items-center">
+<!-- Action Chips -->
+<div class="flex gap-2 mb-4 overflow-x-auto w-full pb-2 no-scrollbar justify-center">
+<button class="px-4 py-1.5 rounded-full bg-surface-container-low border border-outline-variant/40 text-on-surface-variant font-label-mono text-[11px] uppercase tracking-wider hover:bg-surface-variant transition-colors whitespace-nowrap shadow-sm">
+                        Summarize
+                    </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-low border border-outline-variant/40 text-on-surface-variant font-label-mono text-[11px] uppercase tracking-wider hover:bg-surface-variant transition-colors whitespace-nowrap shadow-sm">
+                        Analyze
+                    </button>
+<button class="px-4 py-1.5 rounded-full bg-surface-container-low border border-outline-variant/40 text-on-surface-variant font-label-mono text-[11px] uppercase tracking-wider hover:bg-surface-variant transition-colors whitespace-nowrap shadow-sm">
+                        Creative
+                    </button>
+</div>
+<!-- Input Pill -->
+<div class="w-full bg-surface-container-lowest border-2 border-surface-variant rounded-[32px] p-2 flex items-end shadow-[0px_10px_40px_rgba(0,0,0,0.04)] focus-within:border-outline-variant/50 transition-colors duration-200">
+<button class="p-3 text-on-surface-variant hover:text-primary transition-colors rounded-full shrink-0 flex items-center justify-center">
+<span class="material-symbols-outlined">attach_file</span>
+</button>
+<textarea class="w-full bg-transparent border-none focus:ring-0 resize-none font-body-md text-body-md text-on-surface py-3 px-2 max-h-[150px] overflow-y-auto placeholder:text-outline" placeholder="Ask Dia anything..." rows="1" style="min-height: 48px;"></textarea>
+<button class="p-3 bg-primary text-on-primary hover:bg-primary/90 transition-colors rounded-full shrink-0 flex items-center justify-center shadow-sm ml-2">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
+</button>
+</div>
+<div class="mt-3 font-label-mono text-[10px] text-outline text-center uppercase tracking-widest">
+                    Dia can make mistakes. Verify important info.
+                </div>
+</div>
+</div>
+</main>
+<script>
+        // Auto-resize textarea
+        const textarea = document.querySelector('textarea');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+            if(this.value === '') {
+                this.style.height = '48px';
+            }
+        });
+    </script>
+</body></html>

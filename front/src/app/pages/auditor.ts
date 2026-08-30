@@ -18,13 +18,17 @@ interface Dispute { id: number; purchase_id: number; claim: string; status: stri
   imports: [DatePipe, JsonPipe],
   template: `
     <div class="page">
-      <h1>🔍 Vista del auditor</h1>
-      <p class="sub">
-        Cada decisión de compra deja una entrada encadenada por hash: humano, agente, merchant y wallet escriben
-        en el mismo trail, y cualquier manipulación rompe la cadena.
-      </p>
+      <header class="section-head">
+        <span class="eyebrow">04 / Auditor</span>
+        <h1>Cualquier manipulación rompe la cadena</h1>
+        <p class="sub">
+          Cada decisión de compra deja una entrada encadenada por hash: humano, agente, merchant y wallet escriben
+          en el mismo trail.
+        </p>
+      </header>
 
       <div class="card">
+        <span class="eyebrow">Cadena</span>
         <div class="row spread">
           <h2>Integridad de la cadena</h2>
           @if (integrity(); as i) {
@@ -37,13 +41,14 @@ interface Dispute { id: number; purchase_id: number; claim: string; status: stri
 
       @if (disputes().length) {
         <div class="card mt">
-          <h2>⚖️ Disputas</h2>
+          <span class="eyebrow">Disputas</span>
+          <h2>Disputas</h2>
           @for (d of disputes(); track d.id) {
             <div class="item">
               <div class="row spread">
                 <div>
                   <span class="badge {{ d.status }}">{{ d.status }}</span>
-                  <strong> Compra #{{ d.purchase_id }}</strong> — “{{ d.claim }}”
+                  <strong> Compra #{{ d.purchase_id }}</strong> · “{{ d.claim }}”
                 </div>
                 @if (d.status === 'open') {
                   <button (click)="resolve(d.id)" [disabled]="resolving()">Resolver con el trail</button>
@@ -61,6 +66,7 @@ interface Dispute { id: number; purchase_id: number; claim: string; status: stri
       }
 
       <div class="card mt">
+        <span class="eyebrow">Trail</span>
         <h2>Trail auditable</h2>
         <div class="log" style="max-height: 560px">
           @for (t of trail(); track t.id) {
@@ -73,7 +79,7 @@ interface Dispute { id: number; purchase_id: number; claim: string; status: stri
                 <span class="ts muted mono">#{{ t.id }} · {{ t.created_at | date: 'HH:mm:ss' }}</span>
               </div>
               <div class="muted mono mt">{{ t.payload | json }}</div>
-              <div class="mono" style="color: #4a5568">⛓ {{ t.prev_hash.slice(0, 12) }} → {{ t.hash.slice(0, 12) }}</div>
+              <div class="hash">⛓ {{ t.prev_hash.slice(0, 12) }} → {{ t.hash.slice(0, 12) }}</div>
             </div>
           }
         </div>
