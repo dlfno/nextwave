@@ -114,6 +114,15 @@ Authorization and revocation require authentication within the last five minutes
 Signed evidence uses canonical JSON, SHA-256, and ES256 compact JWS. Replacements
 remain drafts until authorized; activation atomically supersedes the prior version.
 
+Autonomous authorization also issues the two AP2 v0.2 open credentials required
+for delegation: `mandate.checkout.open.1` and `mandate.payment.open.1`. They use
+ES256 compact SD-JWT serialization, bind to a separate Shopping Agent key through
+`cnf.jwk`, and are stored with independent hashes for later closed-mandate and
+dispute verification. The flight-specific checkout constraint is documented in
+[`docs/ap2-flight-constraint.md`](docs/ap2-flight-constraint.md). AP2 supplies
+authorization artifacts inside the commerce flow; it does not replace the UCP
+merchant endpoints or require a standalone AP2 HTTP server.
+
 ## Deterministic mandate policy engine
 
 Milestone 4 adds a pure TypeScript `DeterministicMandateEngine`. Its caller must

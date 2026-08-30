@@ -20,6 +20,7 @@ import {
   MockVuelaYaDiscoveryProvider,
 } from './modules/discovery/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
+import { Ap2CredentialIssuer } from './modules/mandates/ap2-credential.js';
 import { MockPaymentCredentialProvider, StripeSPTProvider } from './modules/payments/index.js';
 import { OpenAIPurchasingAgentProvider } from './modules/purchase-intents/openai-purchasing-agent-provider.js';
 import { MockPurchasingAgentProvider } from './modules/purchase-intents/purchasing-agent-provider.js';
@@ -38,6 +39,18 @@ if (!signingKey) throw new Error('MANDATE_SIGNING_PRIVATE_JWK is required');
 const mandateSigner = await Es256MandateSigner.create(
   JSON.parse(signingKey) as Record<string, unknown>,
   process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-trusted-surface-1',
+);
+const agentSigningKey = process.env.AGENT_SIGNING_PRIVATE_JWK;
+if (!agentSigningKey) throw new Error('AGENT_SIGNING_PRIVATE_JWK is required');
+const ap2TrustedIssuer = await Ap2CredentialIssuer.create(
+  JSON.parse(signingKey) as Record<string, unknown>,
+  process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-trusted-surface-1',
+  'urn:nextwave:trusted-agent-provider',
+);
+const ap2AgentIssuer = await Ap2CredentialIssuer.create(
+  JSON.parse(agentSigningKey) as Record<string, unknown>,
+  process.env.AGENT_SIGNING_KEY_ID ?? 'nextwave-shopping-agent-1',
+  'urn:nextwave:shopping-agent',
 );
 const checkoutSigningKey = process.env.VUELAYA_SIGNING_PRIVATE_JWK;
 if (!checkoutSigningKey) throw new Error('VUELAYA_SIGNING_PRIVATE_JWK is required');
@@ -80,7 +93,8 @@ logger.info({
   researchModel: config.openaiResearchModel,
 }, 'Purchasing agent configured');
 const app = createApp({
-  config, database, logger, mandateSigner, discoveryEngine, commerceProviders,
+  config, database, logger, mandateSigner, ap2TrustedIssuer, ap2AgentIssuer,
+  discoveryEngine, commerceProviders,
   paymentCredentialProvider, agentProvider,
 });
 

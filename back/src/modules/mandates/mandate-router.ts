@@ -12,6 +12,7 @@ import {
 } from './mandate-schemas.js';
 import { MandateService } from './mandate-service.js';
 import type { MandateSigner } from './mandate-signer.js';
+import type { Ap2CredentialIssuer } from './ap2-credential.js';
 
 const uuidSchema = z.uuid();
 const versionSchema = z.coerce.number().int().positive();
@@ -28,9 +29,14 @@ function parseVersion(value: unknown): number {
   return parsed.data;
 }
 
-export function createMandateRouter(database: DatabaseClient, signer: MandateSigner): Router {
+export function createMandateRouter(
+  database: DatabaseClient,
+  signer: MandateSigner,
+  ap2TrustedIssuer?: Ap2CredentialIssuer,
+  ap2AgentIssuer?: Ap2CredentialIssuer,
+): Router {
   const router = Router();
-  const service = new MandateService(database, signer);
+  const service = new MandateService(database, signer, ap2TrustedIssuer, ap2AgentIssuer);
   const requireAuthentication = authenticate(database);
   const requireRecent = requireRecentAuthentication();
 

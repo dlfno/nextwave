@@ -23,6 +23,7 @@ import {
 } from './modules/discovery/index.js';
 import { VUELAYA_MERCHANT_ID } from './modules/discovery/mock-vuelaya-provider.js';
 import { createMandateRouter } from './modules/mandates/mandate-router.js';
+import type { Ap2CredentialIssuer } from './modules/mandates/ap2-credential.js';
 import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
 import { createPurchaseIntentRouter } from './modules/purchase-intents/purchase-intent-router.js';
 import { createPaymentRouter, MockPaymentCredentialProvider, type PaymentCredentialProvider } from './modules/payments/index.js';
@@ -38,6 +39,8 @@ interface AppDependencies {
   logger?: Logger;
   agentProvider?: PurchasingAgentProvider;
   mandateSigner?: MandateSigner;
+  ap2TrustedIssuer?: Ap2CredentialIssuer;
+  ap2AgentIssuer?: Ap2CredentialIssuer;
   discoveryEngine?: DiscoveryEngine;
   commerceProviders?: readonly CommerceProvider[];
   paymentCredentialProvider?: PaymentCredentialProvider;
@@ -49,6 +52,8 @@ export function createApp({
   logger = pino(),
   agentProvider = new MockPurchasingAgentProvider(),
   mandateSigner = new UnavailableMandateSigner(),
+  ap2TrustedIssuer,
+  ap2AgentIssuer,
   discoveryEngine = new DiscoveryEngine([
     new MockVuelaYaDiscoveryProvider(),
     new MockAeroSurDiscoveryProvider(),
@@ -87,7 +92,7 @@ export function createApp({
   app.use('/api/v1/auth', createAuthRouter(database, config));
   app.use('/api/v1/agents', createAgentRouter(database));
   app.use('/api/v1/purchase-intents', createPurchaseIntentRouter(database, agentProvider));
-  app.use('/api/v1', createMandateRouter(database, mandateSigner));
+  app.use('/api/v1', createMandateRouter(database, mandateSigner, ap2TrustedIssuer, ap2AgentIssuer));
   app.use('/api/v1', createDiscoveryRouter(database, discoveryEngine));
   app.use('/api/v1', createCheckoutRouter(database, commerceProviders));
   app.use('/api/v1', createAuthorizationRouter(database, mandateSigner, commerceProviders));

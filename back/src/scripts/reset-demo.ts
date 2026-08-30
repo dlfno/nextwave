@@ -7,6 +7,7 @@ import { createDatabaseClient } from '../database/client.js';
 import { compileSpecifications, hashIntentDraft, type FlightIntentDraft } from '../modules/purchase-intents/flight-intent-draft.js';
 import { Es256MandateSigner } from '../modules/mandates/mandate-signer.js';
 import { MandateService } from '../modules/mandates/mandate-service.js';
+import { Ap2CredentialIssuer } from '../modules/mandates/ap2-credential.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const password = process.env.DEMO_ACCOUNT_PASSWORD;
@@ -15,6 +16,8 @@ if (!password || password.length < 12) throw new Error('DEMO_ACCOUNT_PASSWORD mu
 const demoPassword = password;
 const mandateSigningPrivateJwk = process.env.MANDATE_SIGNING_PRIVATE_JWK
   ?? await readFile('/app/runtime-secrets/mandate-signing.jwk', 'utf8').catch(() => undefined);
+const agentSigningPrivateJwk = process.env.AGENT_SIGNING_PRIVATE_JWK
+  ?? await readFile('/app/runtime-secrets/agent-signing.jwk', 'utf8').catch(() => undefined);
 const demoUserId = '30000000-0000-4000-8000-000000000001';
 const demoAgentId = '31000000-0000-4000-8000-000000000001';
 const demoIntentId = '32000000-0000-4000-8000-000000000001';
@@ -87,19 +90,37 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
   if (!mandateSigningPrivateJwk) {
     throw new Error('MANDATE_SIGNING_PRIVATE_JWK or the persisted Docker signing key is required');
   }
+  if (!agentSigningPrivateJwk) {
+    throw new Error('AGENT_SIGNING_PRIVATE_JWK or the persisted Docker agent key is required');
+  }
+  const trustedJwk = JSON.parse(mandateSigningPrivateJwk) as Record<string, unknown>;
+  const agentJwk = JSON.parse(agentSigningPrivateJwk) as Record<string, unknown>;
   const signer = await Es256MandateSigner.create(
-    JSON.parse(mandateSigningPrivateJwk) as Record<string, unknown>,
+    trustedJwk,
     process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-mandate-1',
   );
-  const mandateService = new MandateService(database, signer);
+  const ap2TrustedIssuer = await Ap2CredentialIssuer.create(
+    trustedJwk,
+    process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-mandate-1',
+    'urn:nextwave:trusted-agent-provider',
+  );
+  const ap2AgentIssuer = await Ap2CredentialIssuer.create(
+    agentJwk,
+    process.env.AGENT_SIGNING_KEY_ID ?? 'nextwave-shopping-agent-1',
+    'urn:nextwave:shopping-agent',
+  );
+  const mandateService = new MandateService(database, signer, ap2TrustedIssuer, ap2AgentIssuer);
   const existing = await client.query<{
     mandate_id: string;
     mandate_status: string;
     version: number;
     signed_payload: string | null;
+    ap2_open_checkout_credential: string | null;
+    ap2_open_payment_credential: string | null;
     canonical_payload: Record<string, unknown>;
   }>(
-    `SELECT m.id AS mandate_id, m.status AS mandate_status, mv.version, mv.signed_payload, mv.canonical_payload
+    `SELECT m.id AS mandate_id, m.status AS mandate_status, mv.version, mv.signed_payload,
+       mv.ap2_open_checkout_credential, mv.ap2_open_payment_credential, mv.canonical_payload
      FROM purchase_intents pi
      LEFT JOIN mandates m ON m.intent_id = pi.id
      LEFT JOIN mandate_versions mv ON mv.id = m.current_version_id
@@ -109,7 +130,9 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
   if (existing.rowCount) {
     const current = existing.rows[0];
     if (current?.mandate_status === 'REVOKED' || current?.mandate_status === 'EXPIRED') return;
-    if (current?.signed_payload && await signer.verify(current.signed_payload, current.canonical_payload)) return;
+    if (current?.signed_payload && current.ap2_open_checkout_credential
+      && current.ap2_open_payment_credential
+      && await signer.verify(current.signed_payload, current.canonical_payload)) return;
     if (!current?.mandate_id) throw new Error('Default demo intent exists without its mandate');
     const rotated = await mandateService.createVersion(
       demoUserId,

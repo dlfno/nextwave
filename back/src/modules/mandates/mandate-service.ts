@@ -15,6 +15,12 @@ import { HttpError } from '../../shared/http-error.js';
 import { authorizationSpecificationSchema, type AuthorizationSpecification } from '../purchase-intents/specifications.js';
 import { compileSpecifications, flightIntentDraftSchema, hashIntentDraft } from '../purchase-intents/flight-intent-draft.js';
 import type { MandateSigner } from './mandate-signer.js';
+import {
+  ap2CredentialHash,
+  ap2OpenCheckoutMandateSchema,
+  ap2OpenPaymentMandateSchema,
+  type Ap2CredentialIssuer,
+} from './ap2-credential.js';
 
 interface AuthorizeRow {
   mandate_id: string;
@@ -51,6 +57,8 @@ export class MandateService {
   constructor(
     private readonly database: DatabaseClient,
     private readonly signer: MandateSigner,
+    private readonly ap2TrustedIssuer?: Ap2CredentialIssuer,
+    private readonly ap2AgentIssuer?: Ap2CredentialIssuer,
   ) {
     this.audit = new AuditService(database);
   }
@@ -241,6 +249,9 @@ export class MandateService {
       if (!(await this.signer.verify(evidence.signedPayload, evidence.canonicalPayload))) {
         throw new HttpError(500, 'MANDATE_SIGNATURE_VERIFICATION_FAILED', 'Created mandate signature did not verify');
       }
+      const ap2 = row.mode === 'AUTONOMOUS'
+        ? await this.createAp2OpenMandates(row.canonical_payload, row.valid_until)
+        : undefined;
 
       await client.query(
         "UPDATE mandate_versions SET status = 'SUPERSEDED' WHERE mandate_id = $1 AND status = 'ACTIVE'",
@@ -249,7 +260,10 @@ export class MandateService {
       await client.query(
         `UPDATE mandate_versions SET
           status = 'ACTIVE', canonical_payload = $2, payload_hash = $3, signed_payload = $4,
-          signature_algorithm = $5, signing_key_id = $6, signed_at = $7
+          signature_algorithm = $5, signing_key_id = $6, signed_at = $7,
+          ap2_open_checkout_payload = $8, ap2_open_checkout_credential = $9,
+          ap2_open_checkout_hash = $10, ap2_open_payment_payload = $11,
+          ap2_open_payment_credential = $12, ap2_open_payment_hash = $13
         WHERE id = $1`,
         [
           row.version_id,
@@ -259,6 +273,12 @@ export class MandateService {
           evidence.signatureAlgorithm,
           evidence.signingKeyId,
           signedAt,
+          ap2?.checkout.content ?? null,
+          ap2?.checkout.compact ?? null,
+          ap2?.checkout.hash ?? null,
+          ap2?.payment.content ?? null,
+          ap2?.payment.compact ?? null,
+          ap2?.payment.hash ?? null,
         ],
       );
       await client.query(
@@ -275,6 +295,10 @@ export class MandateService {
         payload: {
           version: row.version, validUntil: row.valid_until.toISOString(),
           payloadHash: evidence.payloadHash.toString('base64url'), signingKeyId: evidence.signingKeyId,
+          ...(ap2 ? {
+            ap2OpenCheckoutHash: ap2.checkout.hash.toString('base64url'),
+            ap2OpenPaymentHash: ap2.payment.hash.toString('base64url'),
+          } : {}),
         },
       });
       return this.get(userId, mandateId);
@@ -389,6 +413,8 @@ export class MandateService {
       maxTotalMinor: record.maxTotalMinor.toString(),
       budgetMinor: record.budgetMinor?.toString() ?? null,
       payloadHash: record.payloadHash?.toString('base64url') ?? null,
+      ap2OpenCheckoutHash: record.ap2OpenCheckoutHash?.toString('base64url') ?? null,
+      ap2OpenPaymentHash: record.ap2OpenPaymentHash?.toString('base64url') ?? null,
     };
   }
 
@@ -398,5 +424,51 @@ export class MandateService {
     } catch {
       // Preserve the original transaction error.
     }
+  }
+
+  private async createAp2OpenMandates(
+    specification: AuthorizationSpecification,
+    validUntil: Date,
+  ) {
+    if (!this.ap2TrustedIssuer || !this.ap2AgentIssuer) {
+      throw new HttpError(503, 'AP2_ISSUER_UNAVAILABLE', 'AP2 mandate issuer is not configured');
+    }
+    const iat = Math.floor(Date.now() / 1_000);
+    const exp = Math.floor(validUntil.getTime() / 1_000);
+    const cnf = { jwk: this.ap2AgentIssuer.publicJwk() };
+    const checkoutContent = ap2OpenCheckoutMandateSchema.parse({
+      vct: 'mandate.checkout.open.1',
+      constraints: [{
+        type: 'com.nextwave.checkout.flight.1',
+        category: specification.productConstraints.category,
+        origin_iata: specification.productConstraints.originIata,
+        destination_iata: specification.productConstraints.destinationIata,
+        departure_date: specification.productConstraints.departureDate,
+        quantity: specification.productConstraints.quantity,
+      }],
+      cnf, iat, exp,
+    });
+    const checkout = await this.ap2TrustedIssuer.issueDelegation(checkoutContent, validUntil);
+    const max = BigInt(specification.spendConstraints.maxTotalMinor);
+    if (max > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new HttpError(422, 'AP2_AMOUNT_UNSUPPORTED', 'Mandate amount exceeds AP2 numeric limits');
+    }
+    const paymentContent = ap2OpenPaymentMandateSchema.parse({
+      vct: 'mandate.payment.open.1',
+      constraints: [
+        { type: 'payment.amount_range', currency: specification.spendConstraints.currency,
+          min: 0, max: Number(max) },
+        { type: 'payment.agent_recurrence', frequency: 'ON_DEMAND', max_occurrences: 1 },
+        { type: 'payment.execution_date', not_after: validUntil.toISOString() },
+        { type: 'payment.reference', conditional_transaction_id: ap2CredentialHash(checkout.compact) },
+      ],
+      cnf, iat, exp,
+    });
+    const payment = await this.ap2TrustedIssuer.issueDelegation(paymentContent, validUntil);
+    if (!(await this.ap2TrustedIssuer.verifyDelegation(checkout.compact, checkout.content))
+      || !(await this.ap2TrustedIssuer.verifyDelegation(payment.compact, payment.content))) {
+      throw new HttpError(500, 'AP2_CREDENTIAL_VERIFICATION_FAILED', 'Created AP2 mandate did not verify');
+    }
+    return { checkout, payment };
   }
 }

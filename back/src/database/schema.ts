@@ -155,6 +155,12 @@ export const mandateVersions = pgTable('mandate_versions', {
   signatureAlgorithm: text('signature_algorithm'),
   signingKeyId: text('signing_key_id'),
   signedAt: timestamp('signed_at', { withTimezone: true }),
+  ap2OpenCheckoutPayload: jsonb('ap2_open_checkout_payload'),
+  ap2OpenCheckoutCredential: text('ap2_open_checkout_credential'),
+  ap2OpenCheckoutHash: bytea('ap2_open_checkout_hash'),
+  ap2OpenPaymentPayload: jsonb('ap2_open_payment_payload'),
+  ap2OpenPaymentCredential: text('ap2_open_payment_credential'),
+  ap2OpenPaymentHash: bytea('ap2_open_payment_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

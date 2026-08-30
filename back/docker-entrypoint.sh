@@ -22,6 +22,14 @@ if [ -z "${VUELAYA_SIGNING_PRIVATE_JWK:-}" ]; then
   VUELAYA_SIGNING_PRIVATE_JWK=$(cat /app/runtime-secrets/checkout-signing.jwk)
   export VUELAYA_SIGNING_PRIVATE_JWK
 fi
+if [ -z "${AGENT_SIGNING_PRIVATE_JWK:-}" ]; then
+  if [ ! -f /app/runtime-secrets/agent-signing.jwk ]; then
+    create_signing_key > /app/runtime-secrets/agent-signing.jwk
+    chmod 600 /app/runtime-secrets/agent-signing.jwk
+  fi
+  AGENT_SIGNING_PRIVATE_JWK=$(cat /app/runtime-secrets/agent-signing.jwk)
+  export AGENT_SIGNING_PRIVATE_JWK
+fi
 
 /app/database/scripts/migrate.sh
 /app/database/scripts/seed.sh

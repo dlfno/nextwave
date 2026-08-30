@@ -7,6 +7,7 @@ import { createApp } from '../src/app.js';
 import type { AppConfig } from '../src/config.js';
 import { createDatabaseClient, type DatabaseClient } from '../src/database/client.js';
 import { Es256MandateSigner } from '../src/modules/mandates/mandate-signer.js';
+import { Ap2CredentialIssuer } from '../src/modules/mandates/ap2-credential.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const frontendOrigin = 'http://localhost:4200';
@@ -44,9 +45,20 @@ describe.skipIf(!databaseUrl)('mandate lifecycle', () => {
 
   beforeAll(async () => {
     database = createDatabaseClient(databaseUrl!);
-    const { privateKey } = await generateKeyPair('ES256', { extractable: true });
-    const signer = await Es256MandateSigner.create(await exportJWK(privateKey), 'test-trusted-surface-key');
-    app = createApp({ config: testConfig, database, logger: pino({ level: 'silent' }), mandateSigner: signer });
+    const trusted = await generateKeyPair('ES256', { extractable: true });
+    const agent = await generateKeyPair('ES256', { extractable: true });
+    const trustedJwk = await exportJWK(trusted.privateKey);
+    const signer = await Es256MandateSigner.create(trustedJwk, 'test-trusted-surface-key');
+    const ap2TrustedIssuer = await Ap2CredentialIssuer.create(
+      trustedJwk, 'test-trusted-surface-key', 'urn:test:trusted-agent-provider',
+    );
+    const ap2AgentIssuer = await Ap2CredentialIssuer.create(
+      await exportJWK(agent.privateKey), 'test-agent-key', 'urn:test:shopping-agent',
+    );
+    app = createApp({
+      config: testConfig, database, logger: pino({ level: 'silent' }), mandateSigner: signer,
+      ap2TrustedIssuer, ap2AgentIssuer,
+    });
   });
 
   beforeEach(async () => {
@@ -167,6 +179,17 @@ describe.skipIf(!databaseUrl)('mandate lifecycle', () => {
       vct: 'com.nextwave.purchase-mandate.open.1',
       authorizedAgent: { id: user.agentId },
     });
+    expect(active.body.versions[0].ap2OpenCheckoutPayload).toMatchObject({
+      vct: 'mandate.checkout.open.1',
+      cnf: { jwk: { kid: 'test-agent-key', kty: 'EC', crv: 'P-256' } },
+    });
+    expect(active.body.versions[0].ap2OpenPaymentPayload).toMatchObject({
+      vct: 'mandate.payment.open.1',
+      constraints: expect.arrayContaining([
+        { type: 'payment.amount_range', currency: 'USD', min: 0, max: 15000 },
+      ]),
+    });
+    expect(active.body.versions[0].ap2OpenCheckoutCredential.split('~')).toHaveLength(3);
   });
 
   it('keeps the active version until a replacement is authorized, then supersedes it atomically', async () => {
