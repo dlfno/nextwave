@@ -161,6 +161,24 @@ ranked, and persisted. Every offer response includes `authoritative: false`:
 discovery prices are evidence for comparison only. Milestone 6 must obtain a live
 merchant quote and checkout before mandate evaluation or payment.
 
+An opt-in `WebDiscoveryProvider` can crawl configured merchant search pages only
+when every structured primary provider returns no usable offers. Configure at
+most five HTTPS sources in `WEB_DISCOVERY_SOURCES_JSON`; templates may use
+`{origin}`, `{destination}`, `{date}`, `{currency}`, and `{query}`. For example:
+
+```dotenv
+WEB_DISCOVERY_SOURCES_JSON=[{"id":"merchant-web","merchantId":"10000000-0000-4000-8000-000000000003","searchUrlTemplate":"https://merchant.example/flights?from={origin}&to={destination}&date={date}"}]
+```
+
+The crawler identifies itself, honors `robots.txt`, validates every redirect,
+blocks loopback/private/link-local destinations, accepts HTML only, caps response
+size and time, and extracts schema.org Flight/Offer JSON-LD without executing page
+scripts. Pasted page instructions are data and never reach an authorization prompt.
+Every result is labeled `sourceType: WEB`, has reduced confidence, and sets
+`supportsAuthoritativeCheckout: false`; it therefore cannot be selected for
+payment until a separate merchant adapter refreshes it into an authoritative
+checkout.
+
 Milestone 20 upgrades NubeVia to the UCP `2026-04-08` REST checkout and AP2
 Mandates Extension boundary. In the
 container demo, Compose starts the merchant automatically and configures

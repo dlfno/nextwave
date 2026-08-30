@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DiscoveryEngine } from '../src/modules/discovery/discovery-engine.js';
 import { MockVuelaYaDiscoveryProvider } from '../src/modules/discovery/mock-vuelaya-provider.js';
@@ -18,6 +18,20 @@ const specification: SearchSpecification = {
 };
 const context = { observedAt: new Date('2026-08-29T12:00:00.000Z') };
 
+function offer(overrides: Partial<DiscoveredOffer> = {}): DiscoveredOffer {
+  return {
+    providerId: 'primary', merchantId: '10000000-0000-4000-8000-000000000001',
+    merchantProductId: 'TEST-FLIGHT', productName: 'Test flight', category: 'travel.flight',
+    unitPriceMinor: '12000', currency: 'USD', availability: 'IN_STOCK',
+    sourceType: 'MOCK', sourceReference: 'mock://test', observedAt: context.observedAt.toISOString(),
+    confidence: 1, supportsAuthoritativeCheckout: true, attributes: {}, ...overrides,
+  };
+}
+
+function provider(id: string, offers: readonly DiscoveredOffer[]): DiscoveryProvider {
+  return { id, async search() { return offers; } };
+}
+
 describe('DiscoveryEngine', () => {
   it('normalizes and ranks the $130 VuelaYa offer before the $300 offer', async () => {
     const engine = new DiscoveryEngine([new MockVuelaYaDiscoveryProvider()]);
@@ -30,6 +44,24 @@ describe('DiscoveryEngine', () => {
     ]);
     expect(offers.every((offer) => offer.authoritative === false)).toBe(true);
     expect(offers.every((offer) => offer.supportsAuthoritativeCheckout)).toBe(true);
+  });
+
+  it('uses web providers only when primary providers return no usable offers', async () => {
+    const fallbackSearch = vi.fn().mockResolvedValue([offer({
+      providerId: 'web', sourceType: 'WEB', supportsAuthoritativeCheckout: false,
+    })]);
+    const fallback = { id: 'web', tier: 'FALLBACK' as const, search: fallbackSearch };
+    const withPrimary = new DiscoveryEngine([
+      provider('primary', [offer({ providerId: 'primary' })]), fallback,
+    ]);
+    const primaryResult = await withPrimary.discoverWithOutcomes(specification, context);
+    expect(fallbackSearch).not.toHaveBeenCalled();
+    expect(primaryResult.outcomes).toContainEqual({ providerId: 'web', status: 'SKIPPED', offerCount: 0 });
+
+    const withoutPrimary = new DiscoveryEngine([provider('primary', []), fallback]);
+    const fallbackResult = await withoutPrimary.discoverWithOutcomes(specification, context);
+    expect(fallbackSearch).toHaveBeenCalledOnce();
+    expect(fallbackResult.offers[0]).toMatchObject({ sourceType: 'WEB', authoritative: false });
   });
 
   it('ranks normalized offers across merchant API, mock, and UCP providers', async () => {

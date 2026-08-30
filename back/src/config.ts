@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+const webDiscoverySourceSchema = z.object({
+  id: z.string().min(1), merchantId: z.uuid(),
+  searchUrlTemplate: z.string().url().refine((value) => value.startsWith('https://'), 'must use HTTPS'),
+}).strict();
+
+function jsonArray(value: unknown): unknown {
+  if (value === undefined || value === '') return [];
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value) as unknown; } catch { return value; }
+}
+
 const environmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   DATABASE_URL: z.string().url(),
@@ -22,6 +33,9 @@ const environmentSchema = z.object({
   ),
   STRIPE_SPT_TEST_PAYMENT_METHOD: z.string().min(1).default('pm_card_visa'),
   STRIPE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(10_000),
+  WEB_DISCOVERY_SOURCES_JSON: z.preprocess(jsonArray, z.array(webDiscoverySourceSchema).max(5)).default([]),
+  WEB_DISCOVERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(15_000).default(4_000),
+  WEB_DISCOVERY_MAX_BYTES: z.coerce.number().int().min(16_384).max(2_000_000).default(512_000),
 }).superRefine((value, context) => {
   if (value.PAYMENT_CREDENTIAL_PROVIDER === 'stripe-spt-test' && !value.STRIPE_SECRET_KEY) {
     context.addIssue({
@@ -46,6 +60,9 @@ export interface AppConfig {
   stripeSecretKey?: string;
   stripeSptTestPaymentMethod?: string;
   stripeTimeoutMs?: number;
+  webDiscoverySources?: readonly z.infer<typeof webDiscoverySourceSchema>[];
+  webDiscoveryTimeoutMs?: number;
+  webDiscoveryMaxBytes?: number;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -66,5 +83,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     ...(parsed.STRIPE_SECRET_KEY ? { stripeSecretKey: parsed.STRIPE_SECRET_KEY } : {}),
     stripeSptTestPaymentMethod: parsed.STRIPE_SPT_TEST_PAYMENT_METHOD,
     stripeTimeoutMs: parsed.STRIPE_TIMEOUT_MS,
+    webDiscoverySources: parsed.WEB_DISCOVERY_SOURCES_JSON,
+    webDiscoveryTimeoutMs: parsed.WEB_DISCOVERY_TIMEOUT_MS,
+    webDiscoveryMaxBytes: parsed.WEB_DISCOVERY_MAX_BYTES,
   };
 }

@@ -25,6 +25,10 @@ export class CommercePage implements OnInit {
     this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers, providerOutcomes, context }) => { this.offers.set(offers); this.discoveryContext.set(context); const connected = providerOutcomes.filter((provider) => provider.status === 'SUCCEEDED').length; this.discoverySteps.set([`${connected} merchant adapters responded`, `${offers.length} offers normalized`, 'Mandate screening and ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
   }
   choose(offer: Offer): void {
+    if (!offer.supportsAuthoritativeCheckout) {
+      this.error.set('This research result cannot be purchased until the merchant supplies an authoritative checkout.');
+      return;
+    }
     this.selected.set(offer); this.busy.set(true); this.error.set(''); this.decision.set(null);
     if (this.demo) { window.setTimeout(() => { const attempt = this.demoAttempt(offer); this.attempt.set(attempt); this.decision.set(this.demoState.get('ACTIVE') === 'REVOKED' ? this.revokedDecision(offer) : this.demoDecision(offer)); this.phase.set('CHECKOUT'); this.busy.set(false); }, 450); return; }
     this.api.selectOffer(this.intentId, offer.id).pipe(

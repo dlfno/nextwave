@@ -30,6 +30,7 @@ export interface DiscoveryContext {
 
 export interface DiscoveryProvider {
   readonly id: string;
+  readonly tier?: 'PRIMARY' | 'FALLBACK';
   search(
     specification: SearchSpecification,
     context: DiscoveryContext,

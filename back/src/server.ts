@@ -18,6 +18,7 @@ import {
   MockAeroSurDiscoveryProvider,
   MockNubeViaUcpDiscoveryProvider,
   MockVuelaYaDiscoveryProvider,
+  WebDiscoveryProvider,
 } from './modules/discovery/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
 import { Ap2CredentialIssuer } from './modules/mandates/ap2-credential.js';
@@ -76,6 +77,11 @@ const discoveryEngine = new DiscoveryEngine([
   nubeViaBaseUrl
     ? new HttpUcpDiscoveryProvider(nubeViaBaseUrl)
     : new MockNubeViaUcpDiscoveryProvider(),
+  ...((config.webDiscoverySources?.length ?? 0) > 0 ? [new WebDiscoveryProvider(
+    config.webDiscoverySources!,
+    { timeoutMs: config.webDiscoveryTimeoutMs ?? 4_000,
+      maxResponseBytes: config.webDiscoveryMaxBytes ?? 512_000 },
+  )] : []),
 ]);
 const paymentCredentialProvider = config.paymentCredentialProvider === 'stripe-spt-test'
   ? new StripeSPTProvider({

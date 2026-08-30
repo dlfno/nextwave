@@ -2,73 +2,263 @@ import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http
 import { Injectable } from '@angular/core';
 import { Observable, catchError, throwError } from 'rxjs';
 
-export interface User { id: string; email: string; displayName: string; role: string; }
-export interface Agent { id: string; name: string; status: string; }
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  role: string;
+}
+export interface Agent {
+  id: string;
+  name: string;
+  status: string;
+}
 export interface PurchaseClientContext {
-  timeZone: string; locale: string; observedAt: string;
+  timeZone: string;
+  locale: string;
+  observedAt: string;
   location?: { latitude: number; longitude: number; accuracyMeters: number };
 }
-export interface IntentMessage { id?: string; role: 'USER' | 'AGENT'; content: string; }
-export interface PurchaseIntentResult { intent: { id: string; status: string }; messages: IntentMessage[]; }
-export interface PurchaseIntentSummary { id: string; agentId: string; status: string; originalRequest: string; createdAt: string; updatedAt: string; }
+export interface IntentMessage {
+  id?: string;
+  role: 'USER' | 'AGENT';
+  content: string;
+}
+export interface PurchaseIntentResult {
+  intent: { id: string; status: string };
+  messages: IntentMessage[];
+}
+export interface PurchaseIntentSummary {
+  id: string;
+  agentId: string;
+  status: string;
+  originalRequest: string;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface AuthorizationSpecification {
   intentDraftHash: string;
-  productConstraints: { category: 'travel.flight'; originIata: string; destinationIata: string; departureDate: string; quantity: number };
+  productConstraints: {
+    category: 'travel.flight';
+    originIata: string;
+    destinationIata: string;
+    departureDate: string;
+    quantity: number;
+  };
   spendConstraints: { maxTotalMinor: string; currency: string };
   merchantConstraints: { allowedMerchants: 'ANY' };
   validUntil: string;
   requiresFinalConfirmation: boolean;
 }
 export interface MandateSummary {
-  id: string; intentId: string | null; agentId: string; status: string; mode: string;
-  currentVersionId: string | null; expiresAt: string; createdAt: string;
+  id: string;
+  intentId: string | null;
+  agentId: string;
+  status: string;
+  mode: string;
+  currentVersionId: string | null;
+  expiresAt: string;
+  createdAt: string;
 }
 export interface MandateVersion {
-  id: string; version: number; status: string; maxTotalMinor: string; currency: string;
-  validFrom: string; validUntil: string; requiresFinalConfirmation: boolean;
-  canonicalPayload: AuthorizationSpecification; payloadHash: string | null; signatureVerified: boolean | null;
+  id: string;
+  version: number;
+  status: string;
+  maxTotalMinor: string;
+  currency: string;
+  validFrom: string;
+  validUntil: string;
+  requiresFinalConfirmation: boolean;
+  canonicalPayload: AuthorizationSpecification;
+  payloadHash: string | null;
+  signatureVerified: boolean | null;
 }
-export interface MandateDetail { mandate: MandateSummary; versions: MandateVersion[]; revocations: { reason: string | null; revokedAt: string }[]; }
+export interface MandateDetail {
+  mandate: MandateSummary;
+  versions: MandateVersion[];
+  revocations: { reason: string | null; revokedAt: string }[];
+}
 export interface Offer {
-  id: string; merchantId: string; merchantName: string; merchantProductId: string; productName: string; description?: string;
-  category: string; unitPriceMinor: string; currency: string; availability: string; sourceType: string;
-  observedAt: string; confidence: number; supportsAuthoritativeCheckout: boolean; rank: number; authoritative: false;
-  rawPayload?: { departureTime?: string; attributes?: Record<string, unknown>; preliminaryCompliance?: { decision: 'ELIGIBLE' | 'INELIGIBLE'; reasons: string[] } };
+  id: string;
+  merchantId: string;
+  merchantName: string;
+  merchantProductId: string;
+  productName: string;
+  description?: string;
+  category: string;
+  unitPriceMinor: string;
+  currency: string;
+  availability: string;
+  sourceType: string;
+  observedAt: string;
+  confidence: number;
+  supportsAuthoritativeCheckout: boolean;
+  rank: number;
+  authoritative: false;
+  rawPayload?: {
+    departureTime?: string;
+    attributes?: Record<string, unknown>;
+    preliminaryCompliance?: { decision: 'ELIGIBLE' | 'INELIGIBLE'; reasons: string[] };
+  };
 }
 export interface SearchSpecification {
-  origin: { city: string; iata: string }; destination: { city: string; country: string; iata: string };
-  departureDate: string; passengers: number; currency: string;
+  origin: { city: string; iata: string };
+  destination: { city: string; country: string; iata: string };
+  departureDate: string;
+  passengers: number;
+  currency: string;
 }
 export interface DiscoveryResult {
   run: { id: string; status: string };
   offers: Offer[];
-  providerOutcomes: { providerId: string; status: 'SUCCEEDED' | 'TIMED_OUT' | 'FAILED'; offerCount: number }[];
-  context: { searchSpecification: SearchSpecification; authorizationSpecification: AuthorizationSpecification };
+  providerOutcomes: {
+    providerId: string;
+    status: 'SUCCEEDED' | 'TIMED_OUT' | 'FAILED' | 'SKIPPED';
+    offerCount: number;
+  }[];
+  context: {
+    searchSpecification: SearchSpecification;
+    authorizationSpecification: AuthorizationSpecification;
+  };
 }
 export interface CheckoutAttempt {
-  attempt: { id: string; status: string; mandateId: string; mandateVersionId: string; selectedOfferId: string; reasonCode?: string | null };
-  quote: { id: string; totalMinor: string; currency: string; observedAt: string; expiresAt: string };
-  checkout: { id: string; merchantId: string; totalMinor: string; currency: string; expiresAt: string; checkoutHash: string; lineItems: { productName: string; quantity: number; totalMinor: string; currency: string; originIata?: string; destinationIata?: string; departureDate?: string }[] };
-  verification: { signatureValid: boolean; expired: boolean; replayed: boolean; hashValid: boolean; valid: boolean };
+  attempt: {
+    id: string;
+    status: string;
+    mandateId: string;
+    mandateVersionId: string;
+    selectedOfferId: string;
+    reasonCode?: string | null;
+  };
+  quote: {
+    id: string;
+    totalMinor: string;
+    currency: string;
+    observedAt: string;
+    expiresAt: string;
+  };
+  checkout: {
+    id: string;
+    merchantId: string;
+    totalMinor: string;
+    currency: string;
+    expiresAt: string;
+    checkoutHash: string;
+    lineItems: {
+      productName: string;
+      quantity: number;
+      totalMinor: string;
+      currency: string;
+      originIata?: string;
+      destinationIata?: string;
+      departureDate?: string;
+    }[];
+  };
+  verification: {
+    signatureValid: boolean;
+    expired: boolean;
+    replayed: boolean;
+    hashValid: boolean;
+    valid: boolean;
+  };
   priceDriftMinor: string;
 }
 export interface MandateDecision {
-  decision: 'ALLOW' | 'DENY' | 'REQUIRE_HUMAN_APPROVAL'; reasonCode: string; mandateVersion: number;
-  checkoutHash: string; evaluatedAt: string; checks: { name: string; passed: boolean; reasonCode?: string }[];
+  decision: 'ALLOW' | 'DENY' | 'REQUIRE_HUMAN_APPROVAL';
+  reasonCode: string;
+  mandateVersion: number;
+  checkoutHash: string;
+  evaluatedAt: string;
+  checks: { name: string; passed: boolean; reasonCode?: string }[];
 }
 export interface PurchaseResult {
   transaction: { id: string; status: string; amountMinor: string; currency: string };
-  order: { id: string; merchantOrderId: string; status: string; totalMinor: string; currency: string; items: { productName: string; quantity: number }[] };
+  order: {
+    id: string;
+    merchantOrderId: string;
+    status: string;
+    totalMinor: string;
+    currency: string;
+    items: { productName: string; quantity: number }[];
+  };
   receipt: { id: string; payloadHash: string; issuedAt: string };
-  credential: { provider: string; merchantId: string; maxAmountMinor: string; currency: string; status: string; expiresAt: string };
+  credential: {
+    provider: string;
+    merchantId: string;
+    maxAmountMinor: string;
+    currency: string;
+    status: string;
+    expiresAt: string;
+  };
 }
-export interface TransactionRecord { id: string; attemptId: string; provider: string; providerReference: string | null; status: string; amountMinor: string; currency: string; failureCode: string | null; createdAt: string; processedAt: string | null; merchantName?: string | null; productName?: string | null; mandateVersion?: number | null; }
-export interface OrderRecord { id: string; merchantOrderId: string; status: string; totalMinor: string; currency: string; createdAt: string; items: { productName: string; quantity: number; totalMinor: string; currency: string }[]; }
-export interface ReceiptRecord { id: string; orderId: string; transactionId: string; receiptType: string; payloadHash: string; rawPayload: Record<string, unknown>; issuedAt: string; }
-export interface AuditEvent { id: string; eventType: string; occurredAt: string; actorType: string; actorId: string | null; intentId: string; mandateId: string | null; mandateVersionId: string | null; attemptId: string | null; transactionId: string | null; correlationId: string; payload: Record<string, unknown>; previousHash: string | null; eventHash: string; }
-export interface AuditProjection { integrity: { valid: boolean; eventCount: number; failedEventId: string | null }; events: AuditEvent[]; }
-export interface TransactionDetail { transaction: TransactionRecord; order: OrderRecord | null; receipt: ReceiptRecord | null; }
-export interface DisputeRecord { id: string; transactionId: string; status: string; reasonCode: string; statement: string | null; openedAt: string; resolvedAt?: string | null; resolutionSummary?: string | null; }
+export interface TransactionRecord {
+  id: string;
+  attemptId: string;
+  provider: string;
+  providerReference: string | null;
+  status: string;
+  amountMinor: string;
+  currency: string;
+  failureCode: string | null;
+  createdAt: string;
+  processedAt: string | null;
+  merchantName?: string | null;
+  productName?: string | null;
+  mandateVersion?: number | null;
+}
+export interface OrderRecord {
+  id: string;
+  merchantOrderId: string;
+  status: string;
+  totalMinor: string;
+  currency: string;
+  createdAt: string;
+  items: { productName: string; quantity: number; totalMinor: string; currency: string }[];
+}
+export interface ReceiptRecord {
+  id: string;
+  orderId: string;
+  transactionId: string;
+  receiptType: string;
+  payloadHash: string;
+  rawPayload: Record<string, unknown>;
+  issuedAt: string;
+}
+export interface AuditEvent {
+  id: string;
+  eventType: string;
+  occurredAt: string;
+  actorType: string;
+  actorId: string | null;
+  intentId: string;
+  mandateId: string | null;
+  mandateVersionId: string | null;
+  attemptId: string | null;
+  transactionId: string | null;
+  correlationId: string;
+  payload: Record<string, unknown>;
+  previousHash: string | null;
+  eventHash: string;
+}
+export interface AuditProjection {
+  integrity: { valid: boolean; eventCount: number; failedEventId: string | null };
+  events: AuditEvent[];
+}
+export interface TransactionDetail {
+  transaction: TransactionRecord;
+  order: OrderRecord | null;
+  receipt: ReceiptRecord | null;
+}
+export interface DisputeRecord {
+  id: string;
+  transactionId: string;
+  status: string;
+  reasonCode: string;
+  statement: string | null;
+  openedAt: string;
+  resolvedAt?: string | null;
+  resolutionSummary?: string | null;
+}
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -79,7 +269,9 @@ export class ApiClient {
     return this.request<{ user: User }>('post', '/auth/login', { email, password });
   }
 
-  getMe(): Observable<{ user: User }> { return this.request('get', '/auth/me'); }
+  getMe(): Observable<{ user: User }> {
+    return this.request('get', '/auth/me');
+  }
 
   register(displayName: string, email: string, password: string): Observable<{ user: User }> {
     return this.request<{ user: User }>('post', '/auth/register', { displayName, email, password });
@@ -93,8 +285,16 @@ export class ApiClient {
     return this.request<{ agent: Agent }>('post', '/agents', { name });
   }
 
-  createIntent(agentId: string, originalRequest: string, clientContext: PurchaseClientContext): Observable<PurchaseIntentResult> {
-    return this.request<PurchaseIntentResult>('post', '/purchase-intents', { agentId, originalRequest, clientContext });
+  createIntent(
+    agentId: string,
+    originalRequest: string,
+    clientContext: PurchaseClientContext,
+  ): Observable<PurchaseIntentResult> {
+    return this.request<PurchaseIntentResult>('post', '/purchase-intents', {
+      agentId,
+      originalRequest,
+      clientContext,
+    });
   }
 
   getIntent(intentId: string): Observable<PurchaseIntentResult> {
@@ -105,25 +305,40 @@ export class ApiClient {
     return this.request('get', '/purchase-intents');
   }
 
-  addIntentMessage(intentId: string, content: string): Observable<{ status: string; ready: boolean; messages: IntentMessage[] }> {
+  addIntentMessage(
+    intentId: string,
+    content: string,
+  ): Observable<{ status: string; ready: boolean; messages: IntentMessage[] }> {
     return this.request('post', `/purchase-intents/${intentId}/messages`, { content });
   }
 
-  finalizeIntent(intentId: string): Observable<{ authorizationSpecification: AuthorizationSpecification }> {
+  finalizeIntent(
+    intentId: string,
+  ): Observable<{ authorizationSpecification: AuthorizationSpecification }> {
     return this.request('post', `/purchase-intents/${intentId}/finalize-specifications`, {});
   }
 
-  createMandateDraft(intentId: string, mode: 'HUMAN_PRESENT' | 'AUTONOMOUS'): Observable<{ mandate: MandateSummary; version: MandateVersion }> {
+  createMandateDraft(
+    intentId: string,
+    mode: 'HUMAN_PRESENT' | 'AUTONOMOUS',
+  ): Observable<{ mandate: MandateSummary; version: MandateVersion }> {
     return this.request('post', `/purchase-intents/${intentId}/mandates/draft`, { mode });
   }
 
-  listMandates(): Observable<{ mandates: MandateSummary[] }> { return this.request('get', '/mandates'); }
-  getMandate(id: string): Observable<MandateDetail> { return this.request('get', `/mandates/${id}`); }
+  listMandates(): Observable<{ mandates: MandateSummary[] }> {
+    return this.request('get', '/mandates');
+  }
+  getMandate(id: string): Observable<MandateDetail> {
+    return this.request('get', `/mandates/${id}`);
+  }
   authorizeMandate(id: string, version?: number): Observable<MandateDetail> {
     const suffix = version ? `/versions/${version}/authorize` : '/authorize';
     return this.request('post', `/mandates/${id}${suffix}`, {});
   }
-  createMandateVersion(id: string, authorizationSpecification: AuthorizationSpecification): Observable<MandateDetail> {
+  createMandateVersion(
+    id: string,
+    authorizationSpecification: AuthorizationSpecification,
+  ): Observable<MandateDetail> {
     return this.request('post', `/mandates/${id}/versions`, { authorizationSpecification });
   }
   revokeMandate(id: string, reason?: string): Observable<MandateDetail> {
@@ -138,36 +353,91 @@ export class ApiClient {
   evaluateAttempt(attemptId: string): Observable<{ decision: MandateDecision }> {
     return this.request('post', `/purchase-attempts/${attemptId}/evaluate`, {});
   }
-  decideApproval(attemptId: string, decision: 'APPROVED' | 'DENIED'): Observable<{ decision: MandateDecision }> {
+  decideApproval(
+    attemptId: string,
+    decision: 'APPROVED' | 'DENIED',
+  ): Observable<{ decision: MandateDecision }> {
     return this.request('post', `/purchase-attempts/${attemptId}/approval`, { decision });
   }
   executePurchase(attemptId: string): Observable<PurchaseResult> {
     return this.request('post', `/purchase-attempts/${attemptId}/execute`, {});
   }
-  listTransactions(): Observable<{ transactions: TransactionRecord[] }> { return this.request('get', '/transactions'); }
-  getTransaction(id: string): Observable<TransactionDetail> { return this.request('get', `/transactions/${id}`); }
-  getTransactionAudit(id: string): Observable<AuditProjection> { return this.request('get', `/transactions/${id}/audit`); }
-  getMerchantVerification(attemptId: string): Observable<AuditProjection> { return this.request('get', `/merchant/verifications/${attemptId}`); }
-  getAuditorEvidence(transactionId: string): Observable<AuditProjection & { facts: Record<string, unknown> }> { return this.request('get', `/auditor/transactions/${transactionId}/evidence`); }
-  openDispute(transactionId: string, reasonCode: string, statement?: string): Observable<{ dispute: DisputeRecord; evidence: { bundle: Record<string, unknown>; bundleHash: string; verificationResult: { valid: boolean; eventCount: number } } }> {
-    return this.request('post', `/transactions/${transactionId}/disputes`, { reasonCode, ...(statement ? { statement } : {}) });
+  listTransactions(): Observable<{ transactions: TransactionRecord[] }> {
+    return this.request('get', '/transactions');
   }
-  getDispute(id: string): Observable<{ dispute: DisputeRecord; evidence: { bundle: Record<string, unknown>; bundleHash: string; verificationResult: { valid: boolean; eventCount: number } } }> { return this.request('get', `/disputes/${id}`); }
+  getTransaction(id: string): Observable<TransactionDetail> {
+    return this.request('get', `/transactions/${id}`);
+  }
+  getTransactionAudit(id: string): Observable<AuditProjection> {
+    return this.request('get', `/transactions/${id}/audit`);
+  }
+  getMerchantVerification(attemptId: string): Observable<AuditProjection> {
+    return this.request('get', `/merchant/verifications/${attemptId}`);
+  }
+  getAuditorEvidence(
+    transactionId: string,
+  ): Observable<AuditProjection & { facts: Record<string, unknown> }> {
+    return this.request('get', `/auditor/transactions/${transactionId}/evidence`);
+  }
+  openDispute(
+    transactionId: string,
+    reasonCode: string,
+    statement?: string,
+  ): Observable<{
+    dispute: DisputeRecord;
+    evidence: {
+      bundle: Record<string, unknown>;
+      bundleHash: string;
+      verificationResult: { valid: boolean; eventCount: number };
+    };
+  }> {
+    return this.request('post', `/transactions/${transactionId}/disputes`, {
+      reasonCode,
+      ...(statement ? { statement } : {}),
+    });
+  }
+  getDispute(
+    id: string,
+  ): Observable<{
+    dispute: DisputeRecord;
+    evidence: {
+      bundle: Record<string, unknown>;
+      bundleHash: string;
+      verificationResult: { valid: boolean; eventCount: number };
+    };
+  }> {
+    return this.request('get', `/disputes/${id}`);
+  }
 
   private request<T>(method: 'get' | 'post', path: string, body?: unknown): Observable<T> {
-    const headers = method === 'post' ? new HttpHeaders({ 'x-csrf-token': this.cookie('nextwave_csrf') }) : undefined;
-    const call = method === 'get'
-      ? this.http.get<T>(`${this.baseUrl}${path}`, { credentials: 'include' })
-      : this.http.post<T>(`${this.baseUrl}${path}`, body, { headers, credentials: 'include' });
-    return call.pipe(catchError((error: HttpErrorResponse) => {
-      const message = typeof error.error?.message === 'string' ? error.error.message : 'Something went wrong. Please try again.';
-      return throwError(() => new Error(message));
-    }));
+    const headers =
+      method === 'post'
+        ? new HttpHeaders({ 'x-csrf-token': this.cookie('nextwave_csrf') })
+        : undefined;
+    const call =
+      method === 'get'
+        ? this.http.get<T>(`${this.baseUrl}${path}`, { credentials: 'include' })
+        : this.http.post<T>(`${this.baseUrl}${path}`, body, { headers, credentials: 'include' });
+    return call.pipe(
+      catchError((error: HttpErrorResponse) => {
+        const message =
+          typeof error.error?.message === 'string'
+            ? error.error.message
+            : 'Something went wrong. Please try again.';
+        return throwError(() => new Error(message));
+      }),
+    );
   }
 
   private cookie(name: string): string {
     if (typeof document === 'undefined') return '';
     const prefix = `${name}=`;
-    return document.cookie.split(';').map((value) => value.trim()).find((value) => value.startsWith(prefix))?.slice(prefix.length) ?? '';
+    return (
+      document.cookie
+        .split(';')
+        .map((value) => value.trim())
+        .find((value) => value.startsWith(prefix))
+        ?.slice(prefix.length) ?? ''
+    );
   }
 }

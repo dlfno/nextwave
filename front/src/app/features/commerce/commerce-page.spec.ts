@@ -22,6 +22,20 @@ describe('CommercePage demo circuit', () => {
     expect(page.offers().every((offer) => offer.authoritative === false)).toBeTrue();
   });
 
+  it('does not allow a discovery-only web result to cross the checkout boundary', () => {
+    const webOffer = {
+      ...page.offers()[0],
+      sourceType: 'WEB',
+      supportsAuthoritativeCheckout: false,
+    };
+
+    page.choose(webOffer);
+
+    expect(page.selected()).toBeNull();
+    expect(page.phase()).toBe('OFFERS');
+    expect(page.error()).toContain('authoritative checkout');
+  });
+
   it('deterministically denies an over-limit authoritative checkout', () => {
     page.choose(page.offers()[1]);
     jasmine.clock().tick(451);

@@ -53,3 +53,24 @@ describe('Stripe SPT configuration', () => {
     });
   });
 });
+
+describe('web discovery configuration', () => {
+  it('is disabled by default and accepts only bounded HTTPS sources', () => {
+    expect(loadConfig(requiredEnvironment).webDiscoverySources).toEqual([]);
+    const configured = loadConfig({
+      ...requiredEnvironment,
+      WEB_DISCOVERY_SOURCES_JSON: JSON.stringify([{
+        id: 'merchant-web', merchantId: '10000000-0000-4000-8000-000000000003',
+        searchUrlTemplate: 'https://merchant.example/flights?from={origin}&to={destination}',
+      }]),
+    });
+    expect(configured.webDiscoverySources).toHaveLength(1);
+    expect(() => loadConfig({
+      ...requiredEnvironment,
+      WEB_DISCOVERY_SOURCES_JSON: JSON.stringify([{
+        id: 'unsafe', merchantId: '10000000-0000-4000-8000-000000000003',
+        searchUrlTemplate: 'http://127.0.0.1/internal',
+      }]),
+    })).toThrow();
+  });
+});
