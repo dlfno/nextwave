@@ -10,7 +10,9 @@ Open `http://localhost:4000`. The stack starts PostgreSQL, the separate NubeVia
 HTTP/UCP merchant, the Express API, and the Angular SSR application. It applies
 migrations and creates persistent development ES256 keys for both trusted-surface
 and merchant signatures. On the first launch it also creates the judge accounts
-below. Later container restarts preserve purchases until an explicit reset.
+below. Later container restarts preserve purchases until an explicit reset. The
+reset generates bounded future travel and mandate dates, so the seeded flow does
+not become expired as the hackathon date moves.
 
 ## Judge accounts
 

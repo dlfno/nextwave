@@ -744,13 +744,13 @@
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
    ACP                     Future alternate commerce adapter                          Interface only
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
-   Stripe SPT              Constrained payment credential                             Provider stub; real adapter only with access
+   Stripe SPT              Constrained payment credential                             Opt-in test adapter; mock default without preview access
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
-   Stripe PaymentIntent    Optional test payment                                      P1
+   Stripe PaymentIntent    Optional test payment                                      Implemented behind Stripe SPT test provider
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
    MCP                     Optional external agent tools                              P2
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
-   Crawling                Discovery fallback only                                    Next milestone; never authoritative
+   Crawling                Discovery fallback only                                    Safe opt-in HTML/JSON-LD fallback; never authoritative
 
   ## 11. Milestones
 
@@ -798,11 +798,16 @@
   - M13: Purchase history, receipts, audit views, merchant verification and disputes.
   - M14: Playwright trial-by-fire suite and deployable demo.
 
-  ### P1
+  ### Implemented extensions
 
-  - Real LLM provider.
-  - HTTP UCP adapter and separately deployed VuelaYa simulator.
-  - Stripe PaymentIntent and SPT if access is available.
+  - Real OpenAI Responses API clarification provider with schema-constrained output.
+  - Multi-merchant discovery with merchant API, mock, and external HTTP/UCP adapters.
+  - Separately deployed NubeVia UCP 2026-04-08 merchant with AP2 mandate verification.
+  - Optional Stripe PaymentIntent/SPT test provider when private-preview access is available.
+  - Safe, opt-in web discovery fallback with SSRF and robots protections; results cannot pay.
+
+  ### Remaining P1
+
   - Passkeys/WebAuthn.
   - Scheduled price monitoring.
   - Recurrence and rolling-budget policies.
@@ -812,7 +817,6 @@
   ### P2
 
   - ACP and MCP interfaces.
-  - Web discovery fallback.
   - Multi-tenant merchant onboarding.
   - Distributed jobs and outbox.
   - External dispute/chargeback integrations.

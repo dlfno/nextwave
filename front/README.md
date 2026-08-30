@@ -1,4 +1,37 @@
-# Front
+# Nextwave frontend
+
+The production-like hackathon stack is started from the repository root:
+
+```sh
+docker compose -f compose.demo.yaml up --build
+```
+
+Open `http://localhost:4000` and sign in as `marta@nextwave.demo` with
+`nextwave-demo-2026`. See [`../DEMO.md`](../DEMO.md) for the merchant/auditor
+accounts, reset commands, and the persisted trial-by-fire rehearsal.
+
+For frontend-only development, install dependencies and run:
+
+```sh
+npm install
+npm start
+```
+
+This serves `http://localhost:4200` and proxies `/api` to an Express API on port
+3000. Start the backend separately when testing persisted behavior; presentation
+routes remain available without it.
+
+## Verification
+
+```sh
+npm test -- --watch=false
+npm run e2e
+```
+
+The Playwright suite covers the happy path, deterministic denial, live
+revocation, role-scoped evidence, disputes, and desktop/mobile viewport fit.
+
+## Angular reference
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.3.8.
 
