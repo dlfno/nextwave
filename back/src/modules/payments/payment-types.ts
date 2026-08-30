@@ -38,11 +38,13 @@ export interface IssuedPaymentCredential {
   readonly currency: string;
   readonly issuedAt: Date;
   readonly expiresAt: Date;
+  readonly ap2PresentationHash: string;
 }
 
 export interface PaymentResult {
   readonly providerReference: string;
   readonly processedAt: Date;
+  readonly paymentReceipt?: import('../commerce/commerce-types.js').SignedProtocolReceipt;
 }
 
 export interface PaymentCredentialProvider {

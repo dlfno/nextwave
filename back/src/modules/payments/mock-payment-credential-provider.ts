@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { HttpError } from '../../shared/http-error.js';
+import type { CheckoutSigner } from '../commerce/checkout-signer.js';
+import { ap2PaymentReceiptSchema } from '../mandates/ap2-credential.js';
 import type {
   CredentialCheckout,
   IssuedPaymentCredential,
@@ -12,6 +14,8 @@ import type {
 export class MockPaymentCredentialProvider implements PaymentCredentialProvider {
   readonly id = 'mock-constrained-credential';
   private readonly consumedReferences = new Set<string>();
+
+  constructor(private readonly receiptSigner?: CheckoutSigner) {}
 
   paymentInstrument() {
     return { id: 'nextwave-mock-wallet', type: 'mock_constrained_token', description: 'Nextwave demo wallet' };
@@ -41,6 +45,7 @@ export class MockPaymentCredentialProvider implements PaymentCredentialProvider 
       currency: checkout.currency,
       issuedAt,
       expiresAt,
+      ap2PresentationHash: authorization.ap2PresentationHash,
     };
   }
 
@@ -63,6 +68,15 @@ export class MockPaymentCredentialProvider implements PaymentCredentialProvider 
       throw new HttpError(409, 'PAYMENT_CREDENTIAL_EXPIRED', 'Payment credential is expired');
     }
     this.consumedReferences.add(credential.providerReference);
-    return { providerReference: `mock-payment-${randomUUID()}`, processedAt: currentTime };
+    const providerReference = `mock-payment-${randomUUID()}`;
+    const receiptPayload = ap2PaymentReceiptSchema.parse({
+      status: 'Success', iss: 'urn:nextwave:mock-payment-processor',
+      iat: Math.floor(currentTime.getTime() / 1_000), reference: credential.ap2PresentationHash,
+      payment_id: providerReference, psp_confirmation_id: providerReference,
+      network_confirmation_id: `mock-network-${randomUUID()}`,
+    });
+    const paymentReceipt = this.receiptSigner
+      ? await this.receiptSigner.signReceipt(receiptPayload) : undefined;
+    return { providerReference, processedAt: currentTime, ...(paymentReceipt ? { paymentReceipt } : {}) };
   }
 }

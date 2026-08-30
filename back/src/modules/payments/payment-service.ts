@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { and, eq } from 'drizzle-orm';
+import { canonicalize } from 'json-canonicalize';
 
 import type { DatabaseClient } from '../../database/client.js';
 import { AuditService } from '../audit/audit-service.js';
@@ -25,8 +26,10 @@ import type { CommerceProvider } from '../commerce/commerce-types.js';
 import type { MandateSigner } from '../mandates/mandate-signer.js';
 import {
   ap2CheckoutHash,
+  ap2CheckoutReceiptSchema,
   ap2CheckoutMandateSchema,
   ap2PaymentMandateSchema,
+  ap2PaymentReceiptSchema,
   ap2TransactionAuthorizationSchema,
   type Ap2CredentialIssuer,
 } from '../mandates/ap2-credential.js';
@@ -228,6 +231,31 @@ export class PaymentService {
       });
       const orderId = randomUUID();
       const receiptId = randomUUID();
+      const checkoutReceiptId = randomUUID();
+      const paymentReceiptId = randomUUID();
+      const checkoutReceipt = completion.checkoutReceipt;
+      const paymentReceipt = payment.paymentReceipt;
+      if (!checkoutReceipt || !this.validProtocolReceipt(checkoutReceipt)) {
+        throw new HttpError(502, 'AP2_CHECKOUT_RECEIPT_INVALID', 'Merchant did not return a valid AP2 receipt');
+      }
+      const parsedCheckoutReceipt = ap2CheckoutReceiptSchema.safeParse(checkoutReceipt.payload);
+      if (!parsedCheckoutReceipt.success || parsedCheckoutReceipt.data.status !== 'Success'
+        || parsedCheckoutReceipt.data.reference !== ap2Presentation.hash.toString('base64url')
+        || parsedCheckoutReceipt.data.order_id !== completion.merchantOrderId) {
+        throw new HttpError(502, 'AP2_CHECKOUT_RECEIPT_INVALID', 'Merchant receipt is not bound to this purchase');
+      }
+      if (credential.provider === 'mock-constrained-credential'
+        && (!paymentReceipt || !this.validProtocolReceipt(paymentReceipt))) {
+        throw new HttpError(502, 'AP2_PAYMENT_RECEIPT_INVALID', 'Payment processor did not return a valid AP2 receipt');
+      }
+      const parsedPaymentReceipt = paymentReceipt
+        ? ap2PaymentReceiptSchema.safeParse(paymentReceipt.payload) : undefined;
+      if (parsedPaymentReceipt && (!parsedPaymentReceipt.success
+        || parsedPaymentReceipt.data.status !== 'Success'
+        || parsedPaymentReceipt.data.reference !== ap2Presentation.hash.toString('base64url')
+        || parsedPaymentReceipt.data.payment_id !== payment.providerReference)) {
+        throw new HttpError(502, 'AP2_PAYMENT_RECEIPT_INVALID', 'Payment receipt is not bound to this purchase');
+      }
       const receiptPayload = {
         vct: 'com.nextwave.order-receipt.1',
         receiptId,
@@ -283,6 +311,18 @@ export class PaymentService {
           rawPayload: signedReceipt.canonicalPayload,
           issuedAt: payment.processedAt,
         });
+        await transaction.insert(receipts).values({
+          id: checkoutReceiptId, orderId, transactionId, receiptType: 'CHECKOUT',
+          signedPayload: checkoutReceipt.signedPayload, payloadHash: checkoutReceipt.payloadHash,
+          rawPayload: checkoutReceipt.payload, issuedAt: new Date(parsedCheckoutReceipt.data.iat * 1_000),
+        });
+        if (paymentReceipt && parsedPaymentReceipt?.success) {
+          await transaction.insert(receipts).values({
+            id: paymentReceiptId, orderId, transactionId, receiptType: 'PAYMENT',
+            signedPayload: paymentReceipt.signedPayload, payloadHash: paymentReceipt.payloadHash,
+            rawPayload: paymentReceipt.payload, issuedAt: new Date(parsedPaymentReceipt.data.iat * 1_000),
+          });
+        }
         await transaction.update(mandateUsageReservations).set({ status: 'CONSUMED', consumedAt: payment.processedAt })
           .where(eq(mandateUsageReservations.attemptId, attemptId));
         await transaction.update(checkoutSessions).set({ status: 'COMPLETED', completedAt: completion.completedAt })
@@ -334,6 +374,8 @@ export class PaymentService {
           orderId, merchantOrderId: completion.merchantOrderId, receiptId,
           totalMinor: loaded.checkout.totalMinor.toString(), currency: loaded.checkout.currency,
           receiptHash: signedReceipt.payloadHash.toString('base64url'),
+          ap2CheckoutReceiptHash: checkoutReceipt.payloadHash.toString('base64url'),
+          ...(paymentReceipt ? { ap2PaymentReceiptHash: paymentReceipt.payloadHash.toString('base64url') } : {}),
         },
       });
       return (await this.existingResult(userId, attemptId))!;
@@ -364,7 +406,7 @@ export class PaymentService {
       .innerJoin(purchaseIntents, eq(purchaseIntents.id, purchaseAttempts.intentId))
       .leftJoin(paymentCredentials, eq(paymentCredentials.id, transactions.credentialId))
       .leftJoin(orders, eq(orders.transactionId, transactions.id))
-      .leftJoin(receipts, eq(receipts.transactionId, transactions.id))
+      .leftJoin(receipts, and(eq(receipts.transactionId, transactions.id), eq(receipts.receiptType, 'ORDER')))
       .where(and(eq(transactions.attemptId, attemptId), eq(purchaseIntents.userId, userId))).limit(1);
     if (!record) return undefined;
     if (record.transaction.status !== 'SUCCEEDED' || !record.order || !record.receipt || !record.credential) {
@@ -409,5 +451,12 @@ export class PaymentService {
 
   private money<T extends { totalMinor: bigint }>(record: T) {
     return { ...record, totalMinor: record.totalMinor.toString() };
+  }
+
+  private validProtocolReceipt(receipt: {
+    payload: Readonly<Record<string, unknown>>; payloadHash: Buffer;
+  }): boolean {
+    return createHash('sha256').update(canonicalize(receipt.payload), 'utf8').digest()
+      .equals(receipt.payloadHash);
   }
 }

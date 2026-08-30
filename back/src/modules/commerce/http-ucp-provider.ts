@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { canonicalize } from 'json-canonicalize';
 import { compactVerify, flattenedVerify, importJWK, type JWK } from 'jose';
 import { z } from 'zod';
@@ -5,6 +7,7 @@ import { z } from 'zod';
 import { HttpError } from '../../shared/http-error.js';
 import { discoveredOfferSchema, type DiscoveryContext, type DiscoveryProvider } from '../discovery/discovery-types.js';
 import { NUBEVIA_MERCHANT_ID } from '../discovery/mock-multi-merchant-providers.js';
+import { ap2CheckoutReceiptSchema, ap2CredentialHash } from '../mandates/ap2-credential.js';
 import type { SearchSpecification } from '../purchase-intents/specifications.js';
 import type {
   AuthoritativeQuote,
@@ -70,6 +73,11 @@ const completionResponseSchema = z.object({
   id: z.string().min(1), status: z.literal('completed'),
   order: z.object({ id: z.string().min(1), permalink_url: z.string().url() }).passthrough(),
   completed_at: z.iso.datetime(),
+  ap2_receipt: z.object({
+    payload: ap2CheckoutReceiptSchema,
+    signed_payload: z.string().min(1),
+    payload_hash: z.string().min(1),
+  }).strict(),
 }).passthrough();
 
 const profileSchema = z.object({
@@ -221,7 +229,24 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
       }] },
       ap2: { checkout_mandate: request.ap2CheckoutMandate },
     }, completionResponseSchema);
-    return { merchantOrderId: result.order.id, completedAt: new Date(result.completed_at) };
+    const receiptHash = Buffer.from(result.ap2_receipt.payload_hash, 'base64url');
+    const receiptValid = await this.verifyReceipt(
+      result.ap2_receipt.signed_payload, result.ap2_receipt.payload,
+    ) && receiptHash.equals(createHash('sha256')
+      .update(canonicalize(result.ap2_receipt.payload), 'utf8').digest())
+      && result.ap2_receipt.payload.status === 'Success'
+      && result.ap2_receipt.payload.reference === ap2CredentialHash(request.ap2CheckoutMandate)
+      && result.ap2_receipt.payload.order_id === result.order.id;
+    if (!receiptValid) {
+      throw new HttpError(502, 'AP2_CHECKOUT_RECEIPT_INVALID', 'NubeVia returned an invalid AP2 checkout receipt');
+    }
+    return {
+      merchantOrderId: result.order.id, completedAt: new Date(result.completed_at),
+      checkoutReceipt: {
+        payload: result.ap2_receipt.payload, signedPayload: result.ap2_receipt.signed_payload,
+        payloadHash: receiptHash,
+      },
+    };
   }
 
   private async verificationKey(): Promise<ImportedKey> {
@@ -245,6 +270,16 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
         payload: Buffer.from(canonicalize(payload), 'utf8').toString('base64url'), signature: encodedSignature },
       await this.verificationKey(), { algorithms: ['ES256'] });
       return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async verifyReceipt(signature: string, payload: Readonly<Record<string, unknown>>) {
+    try {
+      const verified = await compactVerify(signature, await this.verificationKey(), { algorithms: ['ES256'] });
+      return verified.protectedHeader.typ === 'application/ap2-receipt+jwt'
+        && Buffer.from(verified.payload).equals(Buffer.from(canonicalize(payload), 'utf8'));
     } catch {
       return false;
     }

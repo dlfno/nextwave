@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { HttpError } from '../../shared/http-error.js';
+import { ap2CheckoutReceiptSchema, ap2CredentialHash } from '../mandates/ap2-credential.js';
 import { VUELAYA_MERCHANT_ID } from '../discovery/mock-vuelaya-provider.js';
 import { AEROSUR_MERCHANT_ID, NUBEVIA_MERCHANT_ID } from '../discovery/mock-multi-merchant-providers.js';
 import type { CheckoutSigner } from './checkout-signer.js';
@@ -144,7 +145,14 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       || request.currency !== 'USD' || !request.credentialReference || !request.ap2CheckoutMandate) {
       throw new HttpError(409, 'MERCHANT_PAYMENT_REJECTED', 'Merchant rejected the payment scope');
     }
-    return { merchantOrderId: `${this.options.orderPrefix}-ORDER-${randomUUID()}`, completedAt: new Date() };
+    const merchantOrderId = `${this.options.orderPrefix}-ORDER-${randomUUID()}`;
+    const completedAt = new Date();
+    const receipt = await this.signer.signReceipt(ap2CheckoutReceiptSchema.parse({
+      status: 'Success', iss: `urn:nextwave:merchant:${this.merchantId}`,
+      iat: Math.floor(completedAt.getTime() / 1_000),
+      reference: ap2CredentialHash(request.ap2CheckoutMandate), order_id: merchantOrderId,
+    }));
+    return { merchantOrderId, completedAt, checkoutReceipt: receipt };
   }
 }
 

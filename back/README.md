@@ -123,6 +123,15 @@ dispute verification. The flight-specific checkout constraint is documented in
 authorization artifacts inside the commerce flow; it does not replace the UCP
 merchant endpoints or require a standalone AP2 HTTP server.
 
+At execution, the platform creates closed `mandate.checkout.1` and
+`mandate.payment.1` content. Both are signed in one transaction authorization;
+the checkout hash is SHA-256 over the exact serialized merchant checkout JWT and
+the Payment Mandate uses that same hash as `transaction_id`. Successful mock
+payments persist three distinct receipts: the user-facing order receipt, an
+AP2 Checkout Receipt signed by the merchant, and an AP2 Payment Receipt signed
+by the mock payment processor. Both AP2 receipts reference the exact closed
+mandate presentation hash and are included in dispute reconstruction.
+
 ## Deterministic mandate policy engine
 
 Milestone 4 adds a pure TypeScript `DeterministicMandateEngine`. Its caller must

@@ -94,6 +94,30 @@ export const ap2TransactionAuthorizationSchema = z.object({
   delegate_payload: z.tuple([ap2CheckoutMandateSchema, ap2PaymentMandateSchema]),
 }).strict();
 
+export const ap2CheckoutReceiptSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('Success'), iss: z.string().min(1), iat: z.number().int().positive(),
+    reference: z.string().min(1), order_id: z.string().min(1),
+  }).strict(),
+  z.object({
+    status: z.literal('Error'), iss: z.string().min(1), iat: z.number().int().positive(),
+    reference: z.string().min(1), error: z.string().min(1), error_description: z.string().min(1),
+  }).strict(),
+]);
+
+export const ap2PaymentReceiptSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('Success'), iss: z.string().min(1), iat: z.number().int().positive(),
+    reference: z.string().min(1), payment_id: z.string().min(1),
+    psp_confirmation_id: z.string().min(1), network_confirmation_id: z.string().min(1),
+  }).strict(),
+  z.object({
+    status: z.literal('Error'), iss: z.string().min(1), iat: z.number().int().positive(),
+    reference: z.string().min(1), payment_id: z.string().min(1),
+    error: z.string().min(1), error_description: z.string().min(1),
+  }).strict(),
+]);
+
 export interface Ap2DelegationEvidence {
   readonly content: Record<string, unknown>;
   readonly compact: string;

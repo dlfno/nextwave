@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { exportJWK, generateKeyPair } from 'jose';
 
+import { Es256CheckoutSigner } from '../src/modules/commerce/checkout-signer.js';
+import { ap2PaymentReceiptSchema } from '../src/modules/mandates/ap2-credential.js';
 import { MockPaymentCredentialProvider } from '../src/modules/payments/mock-payment-credential-provider.js';
 
 const now = new Date('2026-08-29T12:00:00Z');
@@ -51,5 +54,21 @@ describe('MockPaymentCredentialProvider', () => {
     await provider.consumeCredential(credential, checkout, new Date('2026-08-29T12:00:30Z'));
     await expect(provider.consumeCredential(credential, checkout, new Date('2026-08-29T12:00:31Z')))
       .rejects.toMatchObject({ code: 'PAYMENT_CREDENTIAL_REPLAYED' });
+  });
+
+  it('returns a processor-signed AP2 payment receipt bound to the mandate presentation', async () => {
+    const { privateKey } = await generateKeyPair('ES256', { extractable: true });
+    const signer = await Es256CheckoutSigner.create(await exportJWK(privateKey), 'payment-processor-1');
+    const provider = new MockPaymentCredentialProvider(signer);
+    const credential = await provider.issueCredential(authorization, checkout);
+    const result = await provider.consumeCredential(credential, checkout, new Date('2026-08-29T12:00:30Z'));
+    if (!result.paymentReceipt) throw new Error('Expected an AP2 payment receipt');
+
+    const payload = ap2PaymentReceiptSchema.parse(result.paymentReceipt.payload);
+    expect(payload).toMatchObject({
+      status: 'Success', reference: authorization.ap2PresentationHash,
+      payment_id: result.providerReference,
+    });
+    expect(await signer.verifyReceipt(result.paymentReceipt.signedPayload, result.paymentReceipt.payload)).toBe(true);
   });
 });

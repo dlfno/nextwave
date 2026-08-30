@@ -6,7 +6,9 @@ import { z } from 'zod';
 
 import { Es256CheckoutSigner } from '../modules/commerce/checkout-signer.js';
 import { NUBEVIA_MERCHANT_ID } from '../modules/discovery/mock-multi-merchant-providers.js';
-import { ap2TransactionAuthorizationSchema } from '../modules/mandates/ap2-credential.js';
+import {
+  ap2CheckoutReceiptSchema, ap2CredentialHash, ap2TransactionAuthorizationSchema,
+} from '../modules/mandates/ap2-credential.js';
 import { searchSpecificationSchema } from '../modules/purchase-intents/specifications.js';
 
 const UCP_VERSION = '2026-04-08';
@@ -44,6 +46,7 @@ interface StoredCheckout {
   readonly signedPayload: string;
   readonly expiresAt: string;
   completedAt?: string;
+  checkoutReceipt?: Awaited<ReturnType<Es256CheckoutSigner['signReceipt']>>;
 }
 
 export interface NubeViaSimulatorOptions {
@@ -161,6 +164,11 @@ export async function createNubeViaSimulator(options: NubeViaSimulatorOptions): 
       return;
     }
     checkout.completedAt = new Date().toISOString();
+    checkout.checkoutReceipt = await signer.signReceipt(ap2CheckoutReceiptSchema.parse({
+      status: 'Success', iss: 'urn:nubevia:merchant',
+      iat: Math.floor(new Date(checkout.completedAt).getTime() / 1_000),
+      reference: ap2CredentialHash(input.ap2.checkout_mandate), order_id: checkout.merchantOrderId,
+    }));
     response.json(completedCheckout(checkout));
   });
 
@@ -240,7 +248,11 @@ async function verifyMandate(
 function completedCheckout(checkout: StoredCheckout) {
   return { ...checkout.payload, status: 'completed', order: {
     id: checkout.merchantOrderId, permalink_url: `https://nubevia.example/orders/${checkout.merchantOrderId}`,
-  }, completed_at: checkout.completedAt };
+  }, completed_at: checkout.completedAt, ap2_receipt: checkout.checkoutReceipt && {
+    payload: checkout.checkoutReceipt.payload,
+    signed_payload: checkout.checkoutReceipt.signedPayload,
+    payload_hash: checkout.checkoutReceipt.payloadHash.toString('base64url'),
+  } };
 }
 
 function ucpError(code: string, message: string, details?: unknown) {

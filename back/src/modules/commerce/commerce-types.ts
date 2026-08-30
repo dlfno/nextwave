@@ -66,6 +66,13 @@ export interface CompleteCheckoutRequest {
 export interface CheckoutCompletion {
   readonly merchantOrderId: string;
   readonly completedAt: Date;
+  readonly checkoutReceipt?: SignedProtocolReceipt;
+}
+
+export interface SignedProtocolReceipt {
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly signedPayload: string;
+  readonly payloadHash: Buffer;
 }
 
 export interface CommerceProvider {

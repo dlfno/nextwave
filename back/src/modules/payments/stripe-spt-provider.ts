@@ -102,6 +102,7 @@ export class StripeSPTProvider implements PaymentCredentialProvider {
       currency: checkout.currency,
       issuedAt: authorization.issuedAt,
       expiresAt,
+      ap2PresentationHash: authorization.ap2PresentationHash,
     };
   }
 

@@ -58,6 +58,10 @@ const checkoutSigner = await Es256CheckoutSigner.create(
   JSON.parse(checkoutSigningKey) as Record<string, unknown>,
   process.env.VUELAYA_SIGNING_KEY_ID ?? 'vuela-ya-checkout-1',
 );
+const paymentReceiptSigner = await Es256CheckoutSigner.create(
+  JSON.parse(signingKey) as Record<string, unknown>,
+  'nextwave-payment-processor-1',
+);
 const nubeViaBaseUrl = process.env.NUBEVIA_UCP_BASE_URL;
 const commerceProviders = [
   new MockVuelaYaCommerceProvider(checkoutSigner),
@@ -79,7 +83,7 @@ const paymentCredentialProvider = config.paymentCredentialProvider === 'stripe-s
       paymentMethod: config.stripeSptTestPaymentMethod ?? 'pm_card_visa',
       timeoutMs: config.stripeTimeoutMs ?? 10_000,
     })
-  : new MockPaymentCredentialProvider();
+  : new MockPaymentCredentialProvider(paymentReceiptSigner);
 const agentProvider = config.openaiApiKey
   ? new OpenAIPurchasingAgentProvider({
       apiKey: config.openaiApiKey,

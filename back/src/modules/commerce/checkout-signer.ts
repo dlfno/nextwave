@@ -14,6 +14,8 @@ export interface CheckoutSigner {
   verify(signedPayload: string, payload: Readonly<Record<string, unknown>>): Promise<boolean>;
   signDetached(payload: Record<string, unknown>): Promise<string>;
   verifyDetached(signature: string, payload: Readonly<Record<string, unknown>>): Promise<boolean>;
+  signReceipt(payload: Record<string, unknown>): Promise<CheckoutSignature>;
+  verifyReceipt(signedPayload: string, payload: Readonly<Record<string, unknown>>): Promise<boolean>;
   publicJwk(): Readonly<Record<string, unknown>>;
 }
 
@@ -84,6 +86,28 @@ export class Es256CheckoutSigner implements CheckoutSigner {
         signature: encodedSignature,
       }, this.publicKey, { algorithms: ['ES256'] });
       return verified.protectedHeader?.kid === this.keyId;
+    } catch {
+      return false;
+    }
+  }
+
+  async signReceipt(payload: Record<string, unknown>): Promise<CheckoutSignature> {
+    const canonicalPayload = JSON.parse(canonicalize(payload)) as Record<string, unknown>;
+    const bytes = Buffer.from(canonicalize(canonicalPayload), 'utf8');
+    return {
+      payload: canonicalPayload,
+      payloadHash: createHash('sha256').update(bytes).digest(),
+      signedPayload: await new CompactSign(bytes)
+        .setProtectedHeader({ alg: 'ES256', kid: this.keyId, typ: 'application/ap2-receipt+jwt' })
+        .sign(this.privateKey),
+    };
+  }
+
+  async verifyReceipt(signedPayload: string, payload: Readonly<Record<string, unknown>>): Promise<boolean> {
+    try {
+      const verified = await compactVerify(signedPayload, this.publicKey, { algorithms: ['ES256'] });
+      return verified.protectedHeader.typ === 'application/ap2-receipt+jwt'
+        && Buffer.from(verified.payload).equals(Buffer.from(canonicalize(payload), 'utf8'));
     } catch {
       return false;
     }

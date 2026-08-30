@@ -57,21 +57,24 @@ export class RecordsService {
     const [order] = await this.database.db.select().from(orders)
       .where(eq(orders.transactionId, transactionId)).limit(1);
     const items = order ? await this.database.db.select().from(orderItems).where(eq(orderItems.orderId, order.id)) : [];
-    const [receipt] = await this.database.db.select().from(receipts)
-      .where(eq(receipts.transactionId, transactionId)).limit(1);
+    const transactionReceipts = await this.database.db.select().from(receipts)
+      .where(eq(receipts.transactionId, transactionId));
+    const receipt = transactionReceipts.find((entry) => entry.receiptType === 'ORDER');
     return {
       transaction: this.transaction(owned.transaction),
       order: order ? { ...this.total(order), items: items.map((item) => ({
         ...this.total(item), unitPriceMinor: item.unitPriceMinor.toString(),
       })) } : null,
       receipt: receipt ? this.receipt(receipt) : null,
+      protocolReceipts: transactionReceipts.filter((entry) => entry.receiptType !== 'ORDER')
+        .map((entry) => this.receipt(entry)),
     };
   }
 
   async receiptForUser(userId: string, transactionId: string) {
     await this.ownedTransaction(userId, transactionId);
     const [receipt] = await this.database.db.select().from(receipts)
-      .where(eq(receipts.transactionId, transactionId)).limit(1);
+      .where(and(eq(receipts.transactionId, transactionId), eq(receipts.receiptType, 'ORDER'))).limit(1);
     if (!receipt) throw new HttpError(404, 'RECEIPT_NOT_FOUND', 'Receipt not found');
     return this.receipt(receipt);
   }
@@ -169,7 +172,11 @@ export class RecordsService {
       'transaction', to_jsonb(t), 'attempt', to_jsonb(pa), 'intent', to_jsonb(pi),
       'mandate', to_jsonb(m), 'mandateVersion', to_jsonb(mv), 'checkout', to_jsonb(cs),
       'paymentAuthorization', to_jsonb(pauth), 'credentialMetadata',
-        (to_jsonb(pc) - 'token_hash'), 'order', to_jsonb(o), 'receipt', to_jsonb(r),
+        (to_jsonb(pc) - 'token_hash'), 'order', to_jsonb(o),
+      'receipt', (SELECT to_jsonb(r) FROM receipts r
+        WHERE r.transaction_id = t.id AND r.receipt_type = 'ORDER' LIMIT 1),
+      'receipts', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.receipt_type)
+        FROM receipts r WHERE r.transaction_id = t.id), '[]'::jsonb),
       'evaluations', COALESCE((SELECT jsonb_agg(to_jsonb(me) ORDER BY me.evaluated_at)
         FROM mandate_evaluations me WHERE me.attempt_id = pa.id), '[]'::jsonb),
       'approval', (SELECT to_jsonb(ha) FROM human_approvals ha WHERE ha.attempt_id = pa.id LIMIT 1)
@@ -183,7 +190,6 @@ export class RecordsService {
     LEFT JOIN payment_authorizations pauth ON pauth.attempt_id = pa.id
     LEFT JOIN payment_credentials pc ON pc.id = t.credential_id
     LEFT JOIN orders o ON o.transaction_id = t.id
-    LEFT JOIN receipts r ON r.transaction_id = t.id
     WHERE t.id = $1`, [transactionId]);
     if (!result.rows[0]) throw new HttpError(404, 'TRANSACTION_NOT_FOUND', 'Transaction not found');
     return result.rows[0].bundle;
