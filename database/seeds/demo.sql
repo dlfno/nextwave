@@ -14,10 +14,14 @@ INSERT INTO merchant_capabilities (
   id, merchant_id, capability, protocol, protocol_version, configuration
 )
 VALUES
-  ('11000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'dev.ucp.shopping.checkout', 'UCP', '2026-01-23', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb),
+  ('11000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'dev.ucp.shopping.checkout', 'UCP', '2026-04-08', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb),
   ('11000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'merchant.flight.search', 'REST', '1', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb),
-  ('11000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'dev.ucp.shopping.checkout', 'UCP', '2026-01-23', '{"mode":"mock","supportsAuthoritativeCheckout":true}'::jsonb)
-ON CONFLICT (merchant_id, capability, protocol, protocol_version) DO UPDATE SET
+  ('11000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'dev.ucp.shopping.checkout', 'UCP', '2026-04-08', '{"mode":"http","supportsAuthoritativeCheckout":true,"ap2Mandates":true}'::jsonb)
+ON CONFLICT (id) DO UPDATE SET
+  merchant_id = EXCLUDED.merchant_id,
+  capability = EXCLUDED.capability,
+  protocol = EXCLUDED.protocol,
+  protocol_version = EXCLUDED.protocol_version,
   configuration = EXCLUDED.configuration;
 
 INSERT INTO products (id, canonical_name, category, description, attributes)
