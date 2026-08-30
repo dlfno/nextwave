@@ -1,5 +1,6 @@
 import 'dotenv/config';
 
+import { readFile } from 'node:fs/promises';
 import argon2 from 'argon2';
 
 import { createDatabaseClient } from '../database/client.js';
@@ -12,6 +13,8 @@ const password = process.env.DEMO_ACCOUNT_PASSWORD;
 if (!databaseUrl) throw new Error('DATABASE_URL is required');
 if (!password || password.length < 12) throw new Error('DEMO_ACCOUNT_PASSWORD must be at least 12 characters');
 const demoPassword = password;
+const mandateSigningPrivateJwk = process.env.MANDATE_SIGNING_PRIVATE_JWK
+  ?? await readFile('/app/runtime-secrets/mandate-signing.jwk', 'utf8').catch(() => undefined);
 const demoUserId = '30000000-0000-4000-8000-000000000001';
 const demoAgentId = '31000000-0000-4000-8000-000000000001';
 const demoIntentId = '32000000-0000-4000-8000-000000000001';
@@ -81,10 +84,11 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
     },
   };
   const specifications = compileSpecifications(draft);
-  const privateJwk = process.env.MANDATE_SIGNING_PRIVATE_JWK;
-  if (!privateJwk) throw new Error('MANDATE_SIGNING_PRIVATE_JWK is required to create the demo mandate');
+  if (!mandateSigningPrivateJwk) {
+    throw new Error('MANDATE_SIGNING_PRIVATE_JWK or the persisted Docker signing key is required');
+  }
   const signer = await Es256MandateSigner.create(
-    JSON.parse(privateJwk) as Record<string, unknown>,
+    JSON.parse(mandateSigningPrivateJwk) as Record<string, unknown>,
     process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-mandate-1',
   );
   const mandateService = new MandateService(database, signer);
