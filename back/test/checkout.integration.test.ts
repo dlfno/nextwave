@@ -29,6 +29,8 @@ import { MockVuelaYaCommerceProvider } from '../src/modules/commerce/mock-vuelay
 import { VUELAYA_MERCHANT_ID } from '../src/modules/discovery/mock-vuelaya-provider.js';
 import { Es256MandateSigner, type MandateSigner } from '../src/modules/mandates/mandate-signer.js';
 import { approvalPayload } from '../src/modules/authorization/approval-evidence.js';
+import { Ap2CredentialIssuer } from '../src/modules/mandates/ap2-credential.js';
+import { MockPaymentCredentialProvider } from '../src/modules/payments/mock-payment-credential-provider.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const frontendOrigin = 'http://localhost:4200';
@@ -53,14 +55,22 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
   let database: DatabaseClient;
   let signer: CheckoutSigner;
   let mandateSigner: MandateSigner;
+  let ap2TrustedIssuer: Ap2CredentialIssuer;
+  let ap2AgentIssuer: Ap2CredentialIssuer;
 
   beforeAll(async () => {
     database = createDatabaseClient(databaseUrl!);
     const { privateKey } = await generateKeyPair('ES256', { extractable: true });
     signer = await Es256CheckoutSigner.create(await exportJWK(privateKey), 'vuela-ya-test-key');
     const mandateKeys = await generateKeyPair('ES256', { extractable: true });
-    mandateSigner = await Es256MandateSigner.create(
-      await exportJWK(mandateKeys.privateKey), 'trusted-surface-test-key',
+    const trustedJwk = await exportJWK(mandateKeys.privateKey);
+    mandateSigner = await Es256MandateSigner.create(trustedJwk, 'trusted-surface-test-key');
+    ap2TrustedIssuer = await Ap2CredentialIssuer.create(
+      trustedJwk, 'trusted-surface-test-key', 'urn:test:trusted-agent-provider',
+    );
+    const agentKeys = await generateKeyPair('ES256', { extractable: true });
+    ap2AgentIssuer = await Ap2CredentialIssuer.create(
+      await exportJWK(agentKeys.privateKey), 'shopping-agent-test-key', 'urn:test:shopping-agent',
     );
   });
 
@@ -82,6 +92,9 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       logger: pino({ level: 'silent' }),
       commerceProviders: [provider],
       mandateSigner,
+      ap2TrustedIssuer,
+      ap2AgentIssuer,
+      paymentCredentialProvider: new MockPaymentCredentialProvider(signer),
     });
     const client = request.agent(app);
     const registration = await client.post('/api/v1/auth/register').set('Origin', frontendOrigin)
@@ -121,6 +134,13 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     }).where(eq(purchaseIntents.id, intentId));
     const discovery = await client.post(`/api/v1/purchase-intents/${intentId}/discovery-runs`)
       .set('Origin', frontendOrigin).set('X-CSRF-Token', csrfToken).expect(201);
+    const standardOffer = discovery.body.offers.find(
+      (offer: { merchantProductId: string }) => offer.merchantProductId === 'VY-MEX-COR-130',
+    );
+    const expensiveOffer = discovery.body.offers.find(
+      (offer: { merchantProductId: string }) => offer.merchantProductId === 'VY-MEX-COR-300',
+    );
+    if (!standardOffer || !expensiveOffer) throw new Error('VuelaYa integration offers are missing');
 
     const [mandate] = await database.db.insert(mandates).values({
       userId: registration.body.user.id,
@@ -160,8 +180,8 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       client, csrfToken, intentId,
       userId: registration.body.user.id as string,
       mandateId: mandate!.id,
-      offerId: discovery.body.offers[0].id as string,
-      expensiveOfferId: discovery.body.offers[1].id as string,
+      offerId: standardOffer.id as string,
+      expensiveOfferId: expensiveOffer.id as string,
     };
   }
 
@@ -468,7 +488,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     expect(retried.body.order.id).toBe(executed.body.order.id);
     expect(await database.db.select().from(paymentCredentials)).toHaveLength(1);
     expect(await database.db.select().from(transactions)).toHaveLength(1);
-    expect(await database.db.select().from(receipts)).toHaveLength(1);
+    expect(await database.db.select().from(receipts)).toHaveLength(3);
 
     const transactionId = executed.body.transaction.id as string;
     await user.client.get('/api/v1/transactions').expect(200)
