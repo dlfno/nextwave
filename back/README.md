@@ -32,7 +32,8 @@ so tests and offline rehearsals remain usable.
 
 ```dotenv
 OPENAI_API_KEY=sk-...
-OPENAI_AGENT_MODEL=gpt-5.6-terra
+OPENAI_CLARIFICATION_MODEL=gpt-5.6-luna
+OPENAI_RESEARCH_MODEL=gpt-5.6-terra
 OPENAI_TIMEOUT_MS=20000
 ```
 
@@ -44,6 +45,10 @@ one.
 The LLM clarifies intent and produces separate structured search and authorization
 specifications. It does not approve mandates, issue payment credentials, or run
 the deterministic mandate engine.
+
+The clarification provider uses Luna today. The research model setting reserves
+Terra for the multi-merchant discovery/ranking milestone; configuring it now does
+not cause research calls or spend until that provider is implemented and invoked.
 
 ## Purchase intent conversation
 

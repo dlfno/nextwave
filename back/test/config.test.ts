@@ -16,4 +16,16 @@ describe('OpenAI configuration', () => {
     const config = loadConfig({ ...requiredEnvironment, OPENAI_API_KEY: 'test-api-key' });
     expect(config.openaiApiKey).toBe('test-api-key');
   });
+
+  it('uses Luna for clarification and reserves Terra for research by default', () => {
+    const config = loadConfig(requiredEnvironment);
+    expect(config.openaiClarificationModel).toBe('gpt-5.6-luna');
+    expect(config.openaiResearchModel).toBe('gpt-5.6-terra');
+  });
+
+  it('accepts the former model variable as a clarification fallback', () => {
+    const config = loadConfig({ ...requiredEnvironment, OPENAI_AGENT_MODEL: 'legacy-model' });
+    expect(config.openaiClarificationModel).toBe('legacy-model');
+    expect(config.openaiResearchModel).toBe('gpt-5.6-terra');
+  });
 });

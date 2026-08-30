@@ -11,7 +11,9 @@ const environmentSchema = z.object({
     (value) => value === '' ? undefined : value,
     z.string().min(1).optional(),
   ),
-  OPENAI_AGENT_MODEL: z.string().min(1).default('gpt-5.6-terra'),
+  OPENAI_CLARIFICATION_MODEL: z.string().min(1).optional(),
+  OPENAI_RESEARCH_MODEL: z.string().min(1).optional(),
+  OPENAI_AGENT_MODEL: z.string().min(1).optional(),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
 });
 
@@ -23,7 +25,8 @@ export interface AppConfig {
   cookieSecure: boolean;
   nodeEnv: 'development' | 'test' | 'production';
   openaiApiKey?: string;
-  openaiAgentModel?: string;
+  openaiClarificationModel?: string;
+  openaiResearchModel?: string;
   openaiTimeoutMs?: number;
 }
 
@@ -38,7 +41,8 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     cookieSecure: parsed.COOKIE_SECURE === 'true',
     nodeEnv: parsed.NODE_ENV,
     ...(parsed.OPENAI_API_KEY ? { openaiApiKey: parsed.OPENAI_API_KEY } : {}),
-    openaiAgentModel: parsed.OPENAI_AGENT_MODEL,
+    openaiClarificationModel: parsed.OPENAI_CLARIFICATION_MODEL ?? parsed.OPENAI_AGENT_MODEL ?? 'gpt-5.6-luna',
+    openaiResearchModel: parsed.OPENAI_RESEARCH_MODEL ?? 'gpt-5.6-terra',
     openaiTimeoutMs: parsed.OPENAI_TIMEOUT_MS,
   };
 }

@@ -61,7 +61,7 @@ export class OpenAIPurchasingAgentProvider implements PurchasingAgentProvider {
   private readonly model: string;
 
   constructor(options: OpenAIPurchasingAgentOptions) {
-    this.model = options.model ?? 'gpt-5.6-terra';
+    this.model = options.model ?? 'gpt-5.6-luna';
     this.client = options.client ?? new OpenAI({
       apiKey: options.apiKey,
       timeout: options.timeoutMs ?? 20_000,

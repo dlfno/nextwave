@@ -35,11 +35,15 @@ const commerceProviders = [new MockVuelaYaCommerceProvider(checkoutSigner)];
 const agentProvider = config.openaiApiKey
   ? new OpenAIPurchasingAgentProvider({
       apiKey: config.openaiApiKey,
-      model: config.openaiAgentModel ?? 'gpt-5.6-terra',
+      model: config.openaiClarificationModel ?? 'gpt-5.6-luna',
       timeoutMs: config.openaiTimeoutMs ?? 20_000,
     })
   : new MockPurchasingAgentProvider();
-logger.info({ provider: agentProvider instanceof OpenAIPurchasingAgentProvider ? agentProvider.id : 'mock' }, 'Purchasing agent configured');
+logger.info({
+  provider: agentProvider instanceof OpenAIPurchasingAgentProvider ? agentProvider.id : 'mock',
+  clarificationModel: config.openaiClarificationModel,
+  researchModel: config.openaiResearchModel,
+}, 'Purchasing agent configured');
 const app = createApp({ config, database, logger, mandateSigner, commerceProviders, agentProvider });
 
 const server = app.listen(config.port, () => {
