@@ -6,6 +6,7 @@ import { HttpError } from '../../shared/http-error.js';
 import { authenticate, requireCsrf } from '../auth/session.js';
 import type { CommerceProvider } from '../commerce/commerce-types.js';
 import type { MandateSigner } from '../mandates/mandate-signer.js';
+import type { Ap2CredentialIssuer } from '../mandates/ap2-credential.js';
 import { PaymentService } from './payment-service.js';
 import type { PaymentCredentialProvider } from './payment-types.js';
 
@@ -16,9 +17,13 @@ export function createPaymentRouter(
   mandateSigner: MandateSigner,
   commerceProviders: readonly CommerceProvider[],
   credentialProvider: PaymentCredentialProvider,
+  ap2TrustedIssuer?: Ap2CredentialIssuer,
+  ap2AgentIssuer?: Ap2CredentialIssuer,
 ): Router {
   const router = Router();
-  const service = new PaymentService(database, mandateSigner, commerceProviders, credentialProvider);
+  const service = new PaymentService(
+    database, mandateSigner, commerceProviders, credentialProvider, ap2TrustedIssuer, ap2AgentIssuer,
+  );
   router.use(authenticate(database));
 
   router.post('/purchase-attempts/:attemptId/execute', requireCsrf, async (request, response) => {

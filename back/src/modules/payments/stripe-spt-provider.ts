@@ -49,6 +49,10 @@ export class StripeSPTProvider implements PaymentCredentialProvider {
   private readonly fetchFn: typeof fetch;
   private readonly consumedReferences = new Set<string>();
 
+  paymentInstrument() {
+    return { id: this.paymentMethod, type: 'stripe_shared_payment_token', description: 'Stripe test payment method' };
+  }
+
   constructor(private readonly options: StripeSptOptions) {
     if (!options.apiKey.startsWith('sk_test_')) {
       throw new Error('Stripe SPT demo provider requires a Stripe test secret key');

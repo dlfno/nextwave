@@ -13,6 +13,10 @@ export class MockPaymentCredentialProvider implements PaymentCredentialProvider 
   readonly id = 'mock-constrained-credential';
   private readonly consumedReferences = new Set<string>();
 
+  paymentInstrument() {
+    return { id: 'nextwave-mock-wallet', type: 'mock_constrained_token', description: 'Nextwave demo wallet' };
+  }
+
   async issueCredential(
     authorization: PaymentAuthorizationInput,
     checkout: CredentialCheckout,

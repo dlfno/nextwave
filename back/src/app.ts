@@ -97,7 +97,7 @@ export function createApp({
   app.use('/api/v1', createCheckoutRouter(database, commerceProviders));
   app.use('/api/v1', createAuthorizationRouter(database, mandateSigner, commerceProviders));
   app.use('/api/v1', createPaymentRouter(
-    database, mandateSigner, commerceProviders, paymentCredentialProvider,
+    database, mandateSigner, commerceProviders, paymentCredentialProvider, ap2TrustedIssuer, ap2AgentIssuer,
   ));
   app.use('/api/v1', createRecordsRouter(database));
 

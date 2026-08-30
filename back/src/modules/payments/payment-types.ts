@@ -9,6 +9,14 @@ export interface PaymentAuthorizationInput {
   readonly currency: string;
   readonly issuedAt: Date;
   readonly expiresAt: Date;
+  readonly ap2Presentation: string;
+  readonly ap2PresentationHash: string;
+}
+
+export interface PaymentInstrumentReference {
+  readonly id: string;
+  readonly type: string;
+  readonly description?: string;
 }
 
 export interface CredentialCheckout {
@@ -39,6 +47,7 @@ export interface PaymentResult {
 
 export interface PaymentCredentialProvider {
   readonly id: string;
+  paymentInstrument(): PaymentInstrumentReference;
   issueCredential(
     authorization: PaymentAuthorizationInput,
     checkout: CredentialCheckout,

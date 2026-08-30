@@ -21,6 +21,8 @@ const authorization = {
   currency: checkout.currency,
   issuedAt: now,
   expiresAt: new Date('2026-08-29T12:02:00Z'),
+  ap2Presentation: 'issuer.jwt~closed-mandates~',
+  ap2PresentationHash: 'ap2-presentation-hash',
 };
 
 describe('MockPaymentCredentialProvider', () => {

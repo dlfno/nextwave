@@ -54,6 +54,46 @@ export const ap2OpenPaymentMandateSchema = z.object({
   exp: z.number().int().positive(),
 }).strict();
 
+const ap2MerchantSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  website: z.string().url().optional(),
+}).strict();
+
+const ap2PaymentInstrumentSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().min(1),
+  description: z.string().optional(),
+}).strict();
+
+export const ap2CheckoutMandateSchema = z.object({
+  vct: z.literal('mandate.checkout.1'),
+  checkout_jwt: z.string().min(1),
+  checkout_hash: z.string().min(1),
+  iat: z.number().int().positive().optional(),
+  exp: z.number().int().positive().optional(),
+}).strict();
+
+export const ap2PaymentMandateSchema = z.object({
+  vct: z.literal('mandate.payment.1'),
+  transaction_id: z.string().min(1),
+  payee: ap2MerchantSchema,
+  payment_amount: z.object({
+    amount: z.number().int().positive(),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+  }).strict(),
+  payment_instrument: ap2PaymentInstrumentSchema,
+  execution_date: z.iso.datetime().optional(),
+  iat: z.number().int().positive().optional(),
+  exp: z.number().int().positive().optional(),
+}).strict();
+
+export const ap2TransactionAuthorizationSchema = z.object({
+  type: z.literal('delegate'),
+  format: z.literal('dc+sd-jwt'),
+  delegate_payload: z.tuple([ap2CheckoutMandateSchema, ap2PaymentMandateSchema]),
+}).strict();
+
 export interface Ap2DelegationEvidence {
   readonly content: Record<string, unknown>;
   readonly compact: string;
@@ -133,4 +173,8 @@ export class Ap2CredentialIssuer {
 
 export function ap2CredentialHash(compact: string): string {
   return createHash('sha256').update(compact, 'utf8').digest('base64url');
+}
+
+export function ap2CheckoutHash(checkoutJwt: string): string {
+  return createHash('sha256').update(checkoutJwt, 'utf8').digest('base64url');
 }

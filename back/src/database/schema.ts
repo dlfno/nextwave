@@ -332,6 +332,10 @@ export const paymentAuthorizations = pgTable('payment_authorizations', {
   currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
   signedPayload: text('signed_payload').notNull(),
   payloadHash: bytea('payload_hash').notNull().unique(),
+  ap2CheckoutMandatePayload: jsonb('ap2_checkout_mandate_payload'),
+  ap2PaymentMandatePayload: jsonb('ap2_payment_mandate_payload'),
+  ap2Presentation: text('ap2_presentation'),
+  ap2PresentationHash: bytea('ap2_presentation_hash'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
