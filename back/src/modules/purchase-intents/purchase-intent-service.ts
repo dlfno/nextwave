@@ -1,6 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import { agents, intentMessages, purchaseIntents } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
 import type { CreatePurchaseIntentInput } from './purchase-intent-schemas.js';
@@ -8,10 +9,14 @@ import type { ConversationMessage, PurchasingAgentProvider } from './purchasing-
 import { specificationsSchema } from './specifications.js';
 
 export class PurchaseIntentService {
+  private readonly audit: AuditService;
+
   constructor(
     private readonly database: DatabaseClient,
     private readonly agentProvider: PurchasingAgentProvider,
-  ) {}
+  ) {
+    this.audit = new AuditService(database);
+  }
 
   async create(userId: string, input: CreatePurchaseIntentInput) {
     const [ownedAgent] = await this.database.db
@@ -26,7 +31,7 @@ export class PurchaseIntentService {
     const clarification = await this.agentProvider.analyze([initialMessage]);
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
-    return this.database.db.transaction(async (transaction) => {
+    const result = await this.database.db.transaction(async (transaction) => {
       const [intent] = await transaction
         .insert(purchaseIntents)
         .values({
@@ -53,6 +58,12 @@ export class PurchaseIntentService {
 
       return { intent, messages: [userMessage, agentMessage] };
     });
+    await this.audit.append({
+      eventType: 'PURCHASE_INTENT_CREATED', actorType: 'USER', actorId: userId,
+      intentId: result.intent.id,
+      payload: { originalRequest: input.originalRequest, agentId: input.agentId, status },
+    });
+    return result;
   }
 
   async list(userId: string) {
@@ -91,7 +102,7 @@ export class PurchaseIntentService {
     const clarification = await this.agentProvider.analyze([...priorMessages, userMessage]);
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
-    return this.database.db.transaction(async (transaction) => {
+    const result = await this.database.db.transaction(async (transaction) => {
       const [storedUserMessage, storedAgentMessage] = await transaction
         .insert(intentMessages)
         .values([
@@ -112,6 +123,11 @@ export class PurchaseIntentService {
         messages: [storedUserMessage, storedAgentMessage],
       };
     });
+    await this.audit.append({
+      eventType: 'INTENT_CLARIFIED', actorType: 'USER', actorId: userId, intentId,
+      payload: { status, ready: clarification.ready, missingFields: clarification.missingFields },
+    });
+    return result;
   }
 
   async finalize(userId: string, intentId: string) {
@@ -149,6 +165,10 @@ export class PurchaseIntentService {
       .returning();
 
     if (!updated) throw new HttpError(404, 'PURCHASE_INTENT_NOT_FOUND', 'Purchase intent not found');
+    await this.audit.append({
+      eventType: 'SPECIFICATIONS_FINALIZED', actorType: 'AGENT', actorId: intent.agentId, intentId,
+      payload: { searchSpecification: specifications.searchSpecification, authorizationSpecification: specifications.authorizationSpecification },
+    });
     return specifications;
   }
 

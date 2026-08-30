@@ -21,6 +21,7 @@ import {
   paymentCredentials,
   receipts,
   transactions,
+  users,
 } from '../src/database/schema.js';
 import { Es256CheckoutSigner, type CheckoutSigner } from '../src/modules/commerce/checkout-signer.js';
 import type { CommerceProvider } from '../src/modules/commerce/commerce-types.js';
@@ -454,6 +455,54 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     expect(await database.db.select().from(paymentCredentials)).toHaveLength(1);
     expect(await database.db.select().from(transactions)).toHaveLength(1);
     expect(await database.db.select().from(receipts)).toHaveLength(1);
+
+    const transactionId = executed.body.transaction.id as string;
+    await user.client.get('/api/v1/transactions').expect(200)
+      .expect(({ body }) => expect(body.transactions).toHaveLength(1));
+    await user.client.get(`/api/v1/transactions/${transactionId}`).expect(200)
+      .expect(({ body }) => expect(body.order.id).toBe(executed.body.order.id));
+    await user.client.get(`/api/v1/transactions/${transactionId}/receipt`).expect(200)
+      .expect(({ body }) => expect(body.receipt.id).toBe(executed.body.receipt.id));
+    const audit = await user.client.get(`/api/v1/transactions/${transactionId}/audit`).expect(200);
+    expect(audit.body.integrity).toMatchObject({ valid: true });
+    expect(audit.body.events.map((event: { eventType: string }) => event.eventType)).toEqual(
+      expect.arrayContaining([
+        'PURCHASE_INTENT_CREATED', 'DISCOVERY_COMPLETED', 'CHECKOUT_CREATED',
+        'MANDATE_EVALUATED', 'HUMAN_APPROVAL_GRANTED', 'PAYMENT_SUCCEEDED',
+        'ORDER_AND_RECEIPT_CREATED',
+      ]),
+    );
+    expect(JSON.stringify(audit.body)).not.toContain('tokenHash');
+    expect(JSON.stringify(audit.body)).not.toContain('secret');
+
+    await database.db.update(users).set({ role: 'MERCHANT_OPERATOR' }).where(eq(users.id, user.userId));
+    const merchant = await user.client.get(`/api/v1/merchant/verifications/${attemptId}`).expect(200);
+    expect(merchant.body.integrity.valid).toBe(true);
+    expect(merchant.body.events.some((event: { eventType: string }) =>
+      event.eventType === 'MANDATE_EVALUATED')).toBe(true);
+
+    await database.db.update(users).set({ role: 'HUMAN' }).where(eq(users.id, user.userId));
+    const disputed = await user.client.post(`/api/v1/transactions/${transactionId}/disputes`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ reasonCode: 'NOT_RECOGNIZED', statement: 'I want the evidence reviewed.' }).expect(201);
+    expect(disputed.body.dispute.status).toBe('EVIDENCE_ASSEMBLED');
+    expect(disputed.body.evidence.verificationResult.valid).toBe(true);
+    expect(disputed.body.evidence.bundle.credentialMetadata).not.toHaveProperty('token_hash');
+    await user.client.get(`/api/v1/disputes/${disputed.body.dispute.id}`).expect(200);
+
+    await database.db.update(users).set({ role: 'AUDITOR' }).where(eq(users.id, user.userId));
+    const evidence = await user.client.get(`/api/v1/auditor/transactions/${transactionId}/evidence`).expect(200);
+    expect(evidence.body.integrity.valid).toBe(true);
+    expect(evidence.body.facts.receipt.id).toBe(executed.body.receipt.id);
+    await user.client.post(`/api/v1/disputes/${disputed.body.dispute.id}/resolve`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ status: 'RESOLVED_MERCHANT', summary: 'Evidence shows authorized purchase.' }).expect(200)
+      .expect(({ body }) => expect(body.dispute.status).toBe('RESOLVED_MERCHANT'));
+
+    await expect(database.pool.query(
+      "UPDATE audit_events SET event_type = 'TAMPERED' WHERE intent_id = $1",
+      [user.intentId],
+    )).rejects.toThrow(/append-only/);
   });
 
   it('does not issue a credential without approval or after live revocation', async () => {

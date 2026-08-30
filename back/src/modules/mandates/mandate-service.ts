@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import {
   mandateProductConstraints,
   mandateRevocations,
@@ -43,10 +44,14 @@ function assertFutureValidity(specification: AuthorizationSpecification): Date {
 }
 
 export class MandateService {
+  private readonly audit: AuditService;
+
   constructor(
     private readonly database: DatabaseClient,
     private readonly signer: MandateSigner,
-  ) {}
+  ) {
+    this.audit = new AuditService(database);
+  }
 
   async createDraft(userId: string, intentId: string, mode: 'HUMAN_PRESENT' | 'AUTONOMOUS') {
     const [intent] = await this.database.db
@@ -105,6 +110,11 @@ export class MandateService {
         });
         return { mandate, version };
       });
+      await this.audit.append({
+        eventType: 'MANDATE_DRAFTED', actorType: 'USER', actorId: userId, intentId,
+        mandateId: result.mandate.id, mandateVersionId: result.version.id,
+        payload: { version: result.version.version, mode, constraints: specification },
+      });
       return this.serializeDraft(result.mandate, result.version);
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -156,7 +166,14 @@ export class MandateService {
         [inserted.rows[0]!.id, specification.productConstraints.category, specification.productConstraints.quantity],
       );
       await client.query('COMMIT');
-      return this.get(userId, mandateId);
+      const detail = await this.get(userId, mandateId);
+      const created = detail.versions.find((entry) => entry.version === nextVersion)!;
+      if (detail.mandate.intentId) await this.audit.append({
+        eventType: 'MANDATE_VERSION_DRAFTED', actorType: 'USER', actorId: userId,
+        intentId: detail.mandate.intentId, mandateId, mandateVersionId: created.id,
+        payload: { version: nextVersion, constraints: specification },
+      });
+      return detail;
     } catch (error) {
       await this.rollback(client);
       throw error;
@@ -237,6 +254,14 @@ export class MandateService {
         await client.query("UPDATE purchase_intents SET status = 'MANDATE_AUTHORIZED' WHERE id = $1", [row.intent_id]);
       }
       await client.query('COMMIT');
+      if (row.intent_id) await this.audit.append({
+        eventType: 'MANDATE_AUTHORIZED', actorType: 'USER', actorId: userId,
+        intentId: row.intent_id, mandateId, mandateVersionId: row.version_id,
+        payload: {
+          version: row.version, validUntil: row.valid_until.toISOString(),
+          payloadHash: evidence.payloadHash.toString('base64url'), signingKeyId: evidence.signingKeyId,
+        },
+      });
       return this.get(userId, mandateId);
     } catch (error) {
       await this.rollback(client);
@@ -257,6 +282,12 @@ export class MandateService {
     if (mandate.status === 'EXPIRED') throw new HttpError(409, 'MANDATE_EXPIRED', 'Mandate is expired');
     if (mandate.status !== 'REVOKED') {
       await this.database.db.insert(mandateRevocations).values({ mandateId, revokedByUserId: userId, reason });
+      if (mandate.intentId) await this.audit.append({
+        eventType: 'MANDATE_REVOKED', actorType: 'USER', actorId: userId,
+        intentId: mandate.intentId, mandateId,
+        ...(mandate.currentVersionId ? { mandateVersionId: mandate.currentVersionId } : {}),
+        payload: { reason: reason ?? null },
+      });
     }
     return this.get(userId, mandateId);
   }

@@ -20,6 +20,7 @@ import { createMandateRouter } from './modules/mandates/mandate-router.js';
 import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
 import { createPurchaseIntentRouter } from './modules/purchase-intents/purchase-intent-router.js';
 import { createPaymentRouter, MockPaymentCredentialProvider, type PaymentCredentialProvider } from './modules/payments/index.js';
+import { createRecordsRouter } from './modules/records/index.js';
 import {
   MockPurchasingAgentProvider,
   type PurchasingAgentProvider,
@@ -67,6 +68,7 @@ export function createApp({
   app.use('/api/v1', createPaymentRouter(
     database, mandateSigner, commerceProviders, paymentCredentialProvider,
   ));
+  app.use('/api/v1', createRecordsRouter(database));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import { discoveryRuns, merchants, offers, purchaseIntents } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
 import { searchSpecificationSchema, type SearchSpecification } from '../purchase-intents/specifications.js';
@@ -8,10 +9,14 @@ import { DiscoveryEngine } from './discovery-engine.js';
 import type { DiscoveredOffer, RankedOffer } from './discovery-types.js';
 
 export class DiscoveryService {
+  private readonly audit: AuditService;
+
   constructor(
     private readonly database: DatabaseClient,
     private readonly engine: DiscoveryEngine,
-  ) {}
+  ) {
+    this.audit = new AuditService(database);
+  }
 
   async start(userId: string, intentId: string) {
     const intent = await this.findOwnedIntent(userId, intentId);
@@ -71,6 +76,10 @@ export class DiscoveryService {
       });
 
       const byProduct = new Map(storedOffers.map((offer) => [offer.merchantProductId, offer]));
+      await this.audit.append({
+        eventType: 'DISCOVERY_COMPLETED', actorType: 'AGENT', actorId: intent.agentId, intentId,
+        payload: { runId: run.id, providerIds: this.engine.providerIds, offerCount: rankedOffers.length },
+      });
       return {
         run: { ...run, status: 'COMPLETED' as const, completedAt },
         offers: rankedOffers.map((offer) => this.serializeOffer(byProduct.get(offer.merchantProductId)!, offer.rank)),

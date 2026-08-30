@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { canonicalize } from 'json-canonicalize';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import {
   checkoutLineItems,
   checkoutSessions,
@@ -38,6 +39,7 @@ interface LoadedAttempt {
 export class PurchaseAuthorizationService {
   private readonly engine = new DeterministicMandateEngine();
   private readonly providers: ReadonlyMap<string, CommerceProvider>;
+  private readonly audit: AuditService;
 
   constructor(
     private readonly database: DatabaseClient,
@@ -45,6 +47,7 @@ export class PurchaseAuthorizationService {
     providers: readonly CommerceProvider[],
   ) {
     this.providers = new Map(providers.map((provider) => [provider.merchantId, provider]));
+    this.audit = new AuditService(database);
   }
 
   async evaluate(userId: string, attemptId: string): Promise<MandateDecision> {
@@ -86,6 +89,12 @@ export class PurchaseAuthorizationService {
         updatedAt: evaluatedAt,
       }).where(eq(purchaseAttempts.id, attemptId));
     });
+    await this.audit.append({
+      eventType: 'MANDATE_EVALUATED', actorType: 'SYSTEM', intentId: loaded.intent.id,
+      mandateId: loaded.mandate.id, mandateVersionId: loaded.version.id,
+      attemptId, correlationId: loaded.attempt.correlationId,
+      payload: { decision: decision.decision, reasonCode: decision.reasonCode, checks: decision.checks },
+    });
     return decision;
   }
 
@@ -120,6 +129,13 @@ export class PurchaseAuthorizationService {
       signedEvidence: signed.signedPayload,
       decidedAt,
       expiresAt,
+    });
+    await this.audit.append({
+      eventType: decision === 'APPROVED' ? 'HUMAN_APPROVAL_GRANTED' : 'HUMAN_APPROVAL_DENIED',
+      actorType: 'USER', actorId: userId, intentId: loaded.intent.id,
+      mandateId: loaded.mandate.id, mandateVersionId: loaded.version.id,
+      attemptId, correlationId: loaded.attempt.correlationId,
+      payload: { approvalId, checkoutId: loaded.checkout.id, checkoutHash, expiresAt: expiresAt.toISOString() },
     });
     return { approval: { id: approvalId, decision, decidedAt, expiresAt, checkoutHash }, decision: await this.evaluate(userId, attemptId) };
   }

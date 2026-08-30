@@ -39,6 +39,10 @@ export const usageReservationStatus = pgEnum('usage_reservation_status', ['RESER
 export const paymentCredentialStatus = pgEnum('payment_credential_status', ['ISSUED', 'CONSUMED', 'REVOKED', 'EXPIRED']);
 export const transactionStatus = pgEnum('transaction_status', ['PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED']);
 export const orderStatus = pgEnum('order_status', ['CREATED', 'CONFIRMED', 'CANCELLED', 'REFUNDED']);
+export const actorType = pgEnum('actor_type', ['USER', 'AGENT', 'MERCHANT', 'SYSTEM', 'PAYMENT_PROVIDER', 'AUDITOR']);
+export const disputeStatus = pgEnum('dispute_status', [
+  'OPEN', 'EVIDENCE_ASSEMBLED', 'RESOLVED_USER', 'RESOLVED_MERCHANT', 'CLOSED',
+]);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -381,4 +385,44 @@ export const receipts = pgTable('receipts', {
   payloadHash: bytea('payload_hash').notNull().unique(),
   rawPayload: jsonb('raw_payload').notNull(),
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const auditEvents = pgTable('audit_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  eventVersion: integer('event_version').notNull().default(1),
+  eventType: text('event_type').notNull(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  actorType: actorType('actor_type').notNull(),
+  actorId: uuid('actor_id'),
+  intentId: uuid('intent_id').references(() => purchaseIntents.id),
+  mandateId: uuid('mandate_id').references(() => mandates.id),
+  mandateVersionId: uuid('mandate_version_id').references(() => mandateVersions.id),
+  attemptId: uuid('attempt_id').references(() => purchaseAttempts.id),
+  transactionId: uuid('transaction_id').references(() => transactions.id),
+  correlationId: uuid('correlation_id').notNull(),
+  payload: jsonb('payload').notNull(),
+  previousHash: bytea('previous_hash'),
+  eventHash: bytea('event_hash').notNull().unique(),
+});
+
+export const disputes = pgTable('disputes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  transactionId: uuid('transaction_id').notNull().references(() => transactions.id),
+  openedByUserId: uuid('opened_by_user_id').notNull().references(() => users.id),
+  status: disputeStatus('status').notNull().default('OPEN'),
+  reasonCode: text('reason_code').notNull(),
+  statement: text('statement'),
+  openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  resolutionSummary: text('resolution_summary'),
+});
+
+export const disputeEvidence = pgTable('dispute_evidence', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  disputeId: uuid('dispute_id').notNull().unique().references(() => disputes.id, { onDelete: 'cascade' }),
+  evidenceVersion: integer('evidence_version').notNull().default(1),
+  bundle: jsonb('bundle').notNull(),
+  bundleHash: bytea('bundle_hash').notNull().unique(),
+  verificationResult: jsonb('verification_result').notNull(),
+  assembledAt: timestamp('assembled_at', { withTimezone: true }).notNull().defaultNow(),
 });

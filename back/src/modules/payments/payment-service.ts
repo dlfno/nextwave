@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import {
   checkoutLineItems,
   checkoutSessions,
@@ -31,6 +32,7 @@ function isUniqueViolation(error: unknown): boolean {
 export class PaymentService {
   private readonly commerceProviders: ReadonlyMap<string, CommerceProvider>;
   private readonly authorization: PurchaseAuthorizationService;
+  private readonly audit: AuditService;
 
   constructor(
     private readonly database: DatabaseClient,
@@ -40,6 +42,7 @@ export class PaymentService {
   ) {
     this.commerceProviders = new Map(commerceProviders.map((provider) => [provider.merchantId, provider]));
     this.authorization = new PurchaseAuthorizationService(database, mandateSigner, commerceProviders);
+    this.audit = new AuditService(database);
   }
 
   async execute(userId: string, attemptId: string) {
@@ -234,6 +237,48 @@ export class PaymentService {
           .where(eq(purchaseAttempts.id, attemptId));
         await transaction.update(purchaseIntents).set({ status: 'COMPLETED', updatedAt: completion.completedAt })
           .where(eq(purchaseIntents.id, loaded.attempt.intentId));
+      });
+      const auditBase = {
+        intentId: loaded.attempt.intentId,
+        mandateId: loaded.attempt.mandateId,
+        mandateVersionId: loaded.attempt.mandateVersionId,
+        attemptId,
+        transactionId,
+        correlationId: loaded.attempt.correlationId,
+      };
+      await this.audit.append({
+        ...auditBase,
+        eventType: 'PAYMENT_AUTHORIZATION_CREATED', actorType: 'SYSTEM',
+        payload: {
+          paymentAuthorizationId: authorizationId, checkoutId: loaded.checkout.id,
+          checkoutHash: paymentAuthorization.checkoutHash,
+          merchantId: loaded.checkout.merchantId, amountMinor: loaded.checkout.totalMinor.toString(),
+          currency: loaded.checkout.currency, expiresAt: expiresAt.toISOString(),
+        },
+      });
+      await this.audit.append({
+        ...auditBase,
+        eventType: 'PAYMENT_CREDENTIAL_ISSUED', actorType: 'PAYMENT_PROVIDER',
+        payload: {
+          credentialId, provider: credential.provider, providerReference: credential.providerReference,
+          merchantId: credential.merchantId, checkoutId: credential.checkoutId,
+          maxAmountMinor: credential.maxAmountMinor.toString(), currency: credential.currency,
+          expiresAt: credential.expiresAt.toISOString(),
+        },
+      });
+      await this.audit.append({
+        ...auditBase,
+        eventType: 'PAYMENT_SUCCEEDED', actorType: 'PAYMENT_PROVIDER',
+        payload: { provider: credential.provider, providerReference: payment.providerReference },
+      });
+      await this.audit.append({
+        ...auditBase,
+        eventType: 'ORDER_AND_RECEIPT_CREATED', actorType: 'MERCHANT',
+        payload: {
+          orderId, merchantOrderId: completion.merchantOrderId, receiptId,
+          totalMinor: loaded.checkout.totalMinor.toString(), currency: loaded.checkout.currency,
+          receiptHash: signedReceipt.payloadHash.toString('base64url'),
+        },
       });
       return (await this.existingResult(userId, attemptId))!;
     } catch (error) {

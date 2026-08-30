@@ -142,6 +142,17 @@ completes the merchant checkout, and persists a transaction, confirmed order,
 line items, and signed receipt. Repeating execution for the same successful
 attempt returns the original result without issuing another credential.
 
+## Audit, records, and disputes
+
+Milestone 9 records security and commerce actions in an append-only SHA-256 hash
+chain per purchase intent. Human, merchant, and auditor projections are derived
+from that same event history. Record endpoints include transaction history/detail,
+receipt, human audit, merchant verification, auditor evidence, and dispute opening,
+viewing, and resolution. Dispute evidence reconstructs the exact signed mandate
+version, checkout, evaluations, approval, constrained payment authorization,
+credential metadata, transaction, order, and receipt; raw credential hashes are
+excluded from the evidence bundle.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:

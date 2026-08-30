@@ -4,6 +4,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { canonicalize } from 'json-canonicalize';
 
 import type { DatabaseClient } from '../../database/client.js';
+import { AuditService } from '../audit/audit-service.js';
 import {
   checkoutLineItems,
   checkoutSessions,
@@ -26,10 +27,12 @@ function isUniqueViolation(error: unknown): boolean {
 
 export class CheckoutService {
   private readonly providers: ReadonlyMap<string, CommerceProvider>;
+  private readonly audit: AuditService;
 
   constructor(database: DatabaseClient, providers: readonly CommerceProvider[]) {
     this.database = database;
     this.providers = new Map(providers.map((provider) => [provider.merchantId, provider]));
+    this.audit = new AuditService(database);
   }
 
   private readonly database: DatabaseClient;
@@ -124,6 +127,16 @@ export class CheckoutService {
       throw error;
     }
 
+    await this.audit.append({
+      eventType: 'CHECKOUT_CREATED', actorType: 'AGENT', actorId: selection.mandate.agentId,
+      intentId, mandateId: selection.mandate.id, mandateVersionId: selection.version.id,
+      attemptId, payload: {
+        offerId, quoteId, checkoutId, merchantId: quote.merchantId,
+        totalMinor: quote.totalMinor.toString(), currency: quote.currency,
+        checkoutHash: checkout.payloadHash.toString('base64url'),
+        priceDriftMinor: (quote.totalMinor - selection.offer.unitPriceMinor).toString(),
+      },
+    });
     return this.getAttempt(userId, attemptId, selection.offer.unitPriceMinor);
   }
 
