@@ -1,0 +1,9 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3.0
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+selenium>=4.20
+beautifulsoup4>=4.12
+lxml>=5.2
+requests>=2.32
