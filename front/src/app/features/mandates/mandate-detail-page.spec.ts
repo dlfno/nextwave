@@ -1,11 +1,13 @@
 import { ActivatedRoute } from '@angular/router';
 import { ApiClient } from '../../core/api-client';
+import { DemoMandateState } from '../../core/demo-mandate-state';
 import { MandateDetailPage } from './mandate-detail-page';
 
 describe('MandateDetailPage demo lifecycle', () => {
   function createPage(): MandateDetailPage {
+    localStorage.removeItem('nextwave_demo_mandate_status');
     const route = { snapshot: { paramMap: { get: () => 'demo' } } } as unknown as ActivatedRoute;
-    return new MandateDetailPage(route, {} as ApiClient);
+    return new MandateDetailPage(route, {} as ApiClient, new DemoMandateState());
   }
 
   it('authorizes the exact draft version', () => {

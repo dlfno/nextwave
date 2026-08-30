@@ -1,5 +1,6 @@
 import { ActivatedRoute } from '@angular/router';
 import { ApiClient } from '../../core/api-client';
+import { DemoMandateState } from '../../core/demo-mandate-state';
 import { CommercePage } from './commerce-page';
 
 describe('CommercePage demo circuit', () => {
@@ -7,8 +8,9 @@ describe('CommercePage demo circuit', () => {
 
   beforeEach(() => {
     jasmine.clock().install();
+    localStorage.removeItem('nextwave_demo_mandate_status');
     const route = { snapshot: { paramMap: { get: () => 'demo' } } } as unknown as ActivatedRoute;
-    page = new CommercePage(route, {} as ApiClient);
+    page = new CommercePage(route, {} as ApiClient, new DemoMandateState());
     page.ngOnInit();
   });
 

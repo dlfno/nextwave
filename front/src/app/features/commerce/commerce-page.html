@@ -1,7 +1,7 @@
 <main class="page-shell commerce-shell">
   <app-nav />
   <section class="commerce-page">
-    <header class="commerce-head"><div><a routerLink="/mandates">← Mandate</a><p class="eyebrow">Agent commerce session</p><h1>{{ phase() === 'SUCCESS' ? 'Purchase complete' : phase() === 'CHECKOUT' ? 'Verify the checkout' : 'Finding the right flight' }}</h1></div><div class="session-state"><i></i><span>{{ phase() === 'DISCOVERING' ? 'Searching' : phase() === 'SUCCESS' ? 'Recorded' : 'Mandate active' }}</span><small>MEX → COR</small></div></header>
+    <header class="commerce-head"><div><a routerLink="/mandates">← Mandate</a><p class="eyebrow">Agent commerce session</p><h1>{{ phase() === 'SUCCESS' ? 'Purchase complete' : phase() === 'CHECKOUT' ? 'Verify the checkout' : 'Finding the right flight' }}</h1></div><div class="session-state"><i></i><span>{{ decision()?.reasonCode === 'MANDATE_REVOKED' ? 'Mandate revoked' : phase() === 'DISCOVERING' ? 'Searching' : phase() === 'SUCCESS' ? 'Recorded' : 'Mandate active' }}</span><small>MEX → COR</small></div></header>
     @if (demo) { <div class="demo-notice"><strong>Demo presentation</strong><span>Protocol responses and security decisions are simulated locally on this route.</span></div> }
     @if (error()) { <div class="error-notice" role="alert"><strong>Commerce action failed</strong><span>{{ error() }}</span></div> }
 

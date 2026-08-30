@@ -1,0 +1,9 @@
+.git
+.agents
+**/node_modules
+**/dist
+**/.angular
+**/test-results
+**/playwright-report
+.env
+back/.env

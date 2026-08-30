@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
 import { ApiClient, AuthorizationSpecification, MandateDetail, MandateVersion } from '../../core/api-client';
+import { DemoMandateState, DemoMandateStatus } from '../../core/demo-mandate-state';
 import { AppNav } from '../../shared/app-nav';
 
 @Component({ selector: 'app-mandate-detail-page', imports: [AppNav, RouterLink, FormsModule, DatePipe, DecimalPipe], templateUrl: './mandate-detail-page.html', styleUrl: './mandate-detail-page.css' })
@@ -15,9 +16,9 @@ export class MandateDetailPage implements OnInit {
   maxTotal = 150; validUntil = ''; requiresConfirmation = true; revokeReason = '';
   readonly currentVersion = computed(() => this.detail()?.versions.find((version) => version.id === this.detail()?.mandate.currentVersionId) ?? this.detail()?.versions.at(-1) ?? null);
 
-  constructor(route: ActivatedRoute, private readonly api: ApiClient) { this.mandateId = route.snapshot.paramMap.get('mandateId') ?? 'demo'; }
+  constructor(route: ActivatedRoute, private readonly api: ApiClient, private readonly demoState: DemoMandateState) { this.mandateId = route.snapshot.paramMap.get('mandateId') ?? 'demo'; }
   ngOnInit(): void {
-    if (this.mandateId === 'demo') { this.setDetail(this.demoDetail()); this.demo.set(true); return; }
+    if (this.mandateId === 'demo') { this.setDetail(this.demoDetail(this.demoState.get('DRAFT'))); this.demo.set(true); return; }
     this.api.getMandate(this.mandateId).subscribe({ next: (detail) => this.setDetail(detail), error: (error: Error) => { this.error.set(error.message); this.loading.set(false); } });
   }
   authorize(version?: number): void {
@@ -44,7 +45,7 @@ export class MandateDetailPage implements OnInit {
   private setDetail(detail: MandateDetail): void { this.detail.set(detail); this.loading.set(false); }
   private specification(version: MandateVersion | null): AuthorizationSpecification | null { if (!version) return null; const payload = version.canonicalPayload as AuthorizationSpecification & { constraints?: AuthorizationSpecification }; return payload.constraints ?? payload; }
   private toLocalDate(value: string): string { return new Date(value).toISOString().slice(0, 10); }
-  private updateDemoStatus(status: string): void { const detail = this.detail()!; const versions = detail.versions.map((version, index) => ({ ...version, status: index === detail.versions.length - 1 ? status : 'SUPERSEDED', signatureVerified: status === 'ACTIVE' ? true : version.signatureVerified, payloadHash: status === 'ACTIVE' ? 'Y4uN2Kx8qP5sDc9Rv7Ab3Fg1Lm' : version.payloadHash })); this.detail.set({ ...detail, mandate: { ...detail.mandate, status, currentVersionId: status === 'ACTIVE' ? versions.at(-1)!.id : detail.mandate.currentVersionId }, versions }); }
+  private updateDemoStatus(status: DemoMandateStatus): void { this.demoState.set(status); const detail = this.detail()!; const versions = detail.versions.map((version, index) => ({ ...version, status: index === detail.versions.length - 1 ? status : 'SUPERSEDED', signatureVerified: status === 'ACTIVE' ? true : version.signatureVerified, payloadHash: status === 'ACTIVE' ? 'Y4uN2Kx8qP5sDc9Rv7Ab3Fg1Lm' : version.payloadHash })); this.detail.set({ ...detail, mandate: { ...detail.mandate, status, currentVersionId: status === 'ACTIVE' ? versions.at(-1)!.id : detail.mandate.currentVersionId }, versions }); }
   private demoVersion(version: number, status: string, specification?: AuthorizationSpecification): MandateVersion { const spec = specification ?? { productConstraints: { category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', quantity: 1 }, spendConstraints: { maxTotalMinor: '15000', currency: 'USD' }, merchantConstraints: { allowedMerchants: 'ANY' }, validUntil: new Date(Date.now() + 12 * 86400000).toISOString(), requiresFinalConfirmation: true }; return { id: `demo-v${version}`, version, status, maxTotalMinor: spec.spendConstraints.maxTotalMinor, currency: spec.spendConstraints.currency, validFrom: new Date().toISOString(), validUntil: spec.validUntil, requiresFinalConfirmation: spec.requiresFinalConfirmation, canonicalPayload: spec, payloadHash: status === 'ACTIVE' ? 'Y4uN2Kx8qP5sDc9Rv7Ab3Fg1Lm' : null, signatureVerified: status === 'ACTIVE' ? true : null }; }
-  private demoDetail(): MandateDetail { const version = this.demoVersion(1, 'DRAFT'); return { mandate: { id: 'demo', intentId: null, agentId: 'personal-agent', status: 'DRAFT', mode: 'AUTONOMOUS', currentVersionId: null, createdAt: new Date().toISOString(), expiresAt: version.validUntil }, versions: [version], revocations: [] }; }
+  private demoDetail(status: DemoMandateStatus): MandateDetail { const version = this.demoVersion(1, status); return { mandate: { id: 'demo', intentId: null, agentId: 'personal-agent', status, mode: 'AUTONOMOUS', currentVersionId: status === 'DRAFT' ? null : version.id, createdAt: new Date().toISOString(), expiresAt: version.validUntil }, versions: [version], revocations: status === 'REVOKED' ? [{ reason: 'Demo trial-by-fire revocation', revokedAt: new Date().toISOString() }] : [] }; }
 }

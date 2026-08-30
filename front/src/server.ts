@@ -11,18 +11,31 @@ const browserDistFolder = join(import.meta.dirname, '../browser');
 
 const app = express();
 const angularApp = new AngularNodeAppEngine();
+const apiBaseUrl = process.env['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
 
-/**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/{*splat}', (req, res) => {
- *   // Handle API request
- * });
- * ```
- */
+app.use(['/api/{*splat}', '/health'], async (req, res, next) => {
+  try {
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(req.headers)) {
+      if (value !== undefined && name !== 'host') headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+    }
+    const upstream = await fetch(`${apiBaseUrl}${req.originalUrl}`, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : req as unknown as BodyInit,
+      duplex: 'half',
+      redirect: 'manual',
+    } as RequestInit & { duplex: 'half' });
+    upstream.headers.forEach((value, name) => {
+      if (name !== 'set-cookie') res.setHeader(name, value);
+    });
+    const setCookies = upstream.headers.getSetCookie();
+    if (setCookies.length) res.setHeader('set-cookie', setCookies);
+    res.status(upstream.status).send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * Serve static files from /browser

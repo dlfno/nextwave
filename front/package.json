@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "build": "ng build",
+    "e2e": "playwright test",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:front": "node dist/front/server/server.mjs"
@@ -40,6 +41,7 @@
     "@angular/build": "^20.3.8",
     "@angular/cli": "^20.3.8",
     "@angular/compiler-cli": "^20.3.0",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/express": "^5.0.1",
     "@types/jasmine": "~5.1.0",
