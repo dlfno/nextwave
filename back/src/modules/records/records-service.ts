@@ -7,6 +7,9 @@ import type { DatabaseClient } from '../../database/client.js';
 import {
   disputeEvidence,
   disputes,
+  checkoutSessions,
+  mandateVersions,
+  merchants,
   orderItems,
   orders,
   purchaseAttempts,
@@ -31,12 +34,22 @@ export class RecordsService {
   }
 
   async listTransactions(userId: string) {
-    const rows = await this.database.db.select({ transaction: transactions })
+    const rows = await this.database.db.select({
+      transaction: transactions,
+      merchantName: merchants.name,
+      productName: orderItems.productName,
+      mandateVersion: mandateVersions.version,
+    })
       .from(transactions)
       .innerJoin(purchaseAttempts, eq(purchaseAttempts.id, transactions.attemptId))
       .innerJoin(purchaseIntents, eq(purchaseIntents.id, purchaseAttempts.intentId))
+      .innerJoin(checkoutSessions, eq(checkoutSessions.attemptId, purchaseAttempts.id))
+      .innerJoin(merchants, eq(merchants.id, checkoutSessions.merchantId))
+      .innerJoin(mandateVersions, eq(mandateVersions.id, purchaseAttempts.mandateVersionId))
+      .leftJoin(orders, eq(orders.transactionId, transactions.id))
+      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
       .where(eq(purchaseIntents.userId, userId)).orderBy(desc(transactions.createdAt));
-    return rows.map(({ transaction }) => this.transaction(transaction));
+    return rows.map(({ transaction, ...context }) => ({ ...this.transaction(transaction), ...context }));
   }
 
   async transactionDetail(userId: string, transactionId: string) {
@@ -77,7 +90,9 @@ export class RecordsService {
 
   async auditorEvidence(transactionId: string) {
     const facts = await this.reconstruct(transactionId);
-    const projection = await this.auditProjection(facts.intentId as string, () => true);
+    const intentId = (facts.intent as { id?: string } | undefined)?.id;
+    if (!intentId) throw new HttpError(500, 'EVIDENCE_RECONSTRUCTION_INVALID', 'Evidence is missing its purchase intent');
+    const projection = await this.auditProjection(intentId, () => true);
     return { facts, ...projection };
   }
 

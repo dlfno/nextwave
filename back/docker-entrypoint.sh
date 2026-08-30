@@ -16,4 +16,7 @@ fi
 
 /app/database/scripts/migrate.sh
 /app/database/scripts/seed.sh
+if [ "${DEMO_BOOTSTRAP_ACCOUNTS:-false}" = "true" ]; then
+  npm run demo:reset
+fi
 exec node dist/server.js

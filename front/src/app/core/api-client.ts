@@ -46,7 +46,7 @@ export interface PurchaseResult {
   receipt: { id: string; payloadHash: string; issuedAt: string };
   credential: { provider: string; merchantId: string; maxAmountMinor: string; currency: string; status: string; expiresAt: string };
 }
-export interface TransactionRecord { id: string; attemptId: string; provider: string; providerReference: string | null; status: string; amountMinor: string; currency: string; failureCode: string | null; createdAt: string; processedAt: string | null; }
+export interface TransactionRecord { id: string; attemptId: string; provider: string; providerReference: string | null; status: string; amountMinor: string; currency: string; failureCode: string | null; createdAt: string; processedAt: string | null; merchantName?: string | null; productName?: string | null; mandateVersion?: number | null; }
 export interface OrderRecord { id: string; merchantOrderId: string; status: string; totalMinor: string; currency: string; createdAt: string; items: { productName: string; quantity: number; totalMinor: string; currency: string }[]; }
 export interface ReceiptRecord { id: string; orderId: string; transactionId: string; receiptType: string; payloadHash: string; rawPayload: Record<string, unknown>; issuedAt: string; }
 export interface AuditEvent { id: string; eventType: string; occurredAt: string; actorType: string; actorId: string | null; intentId: string; mandateId: string | null; mandateVersionId: string | null; attemptId: string | null; transactionId: string | null; correlationId: string; payload: Record<string, unknown>; previousHash: string | null; eventHash: string; }
@@ -62,6 +62,8 @@ export class ApiClient {
   login(email: string, password: string): Observable<{ user: User }> {
     return this.request<{ user: User }>('post', '/auth/login', { email, password });
   }
+
+  getMe(): Observable<{ user: User }> { return this.request('get', '/auth/me'); }
 
   register(displayName: string, email: string, password: string): Observable<{ user: User }> {
     return this.request<{ user: User }>('post', '/auth/register', { displayName, email, password });

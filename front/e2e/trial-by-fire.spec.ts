@@ -50,7 +50,7 @@ test('live revocation makes the next otherwise-valid attempt fail', async ({ pag
 
 test('reconstructs human, merchant, auditor, and dispute evidence', async ({ page }) => {
   await page.goto('/transactions/demo');
-  await expect(page.getByRole('heading', { name: 'Flight to Córdoba' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Córdoba/ })).toBeVisible();
   await page.getByRole('button', { name: /Audit trail/ }).click();
   await expect(page.getByText('Chain verified')).toBeVisible();
 

@@ -493,6 +493,8 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     await database.db.update(users).set({ role: 'AUDITOR' }).where(eq(users.id, user.userId));
     const evidence = await user.client.get(`/api/v1/auditor/transactions/${transactionId}/evidence`).expect(200);
     expect(evidence.body.integrity.valid).toBe(true);
+    expect(evidence.body.integrity.eventCount).toBeGreaterThan(0);
+    expect(evidence.body.events.some((event: { eventType: string }) => event.eventType === 'PAYMENT_SUCCEEDED')).toBe(true);
     expect(evidence.body.facts.receipt.id).toBe(executed.body.receipt.id);
     await user.client.post(`/api/v1/disputes/${disputed.body.dispute.id}/resolve`)
       .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)

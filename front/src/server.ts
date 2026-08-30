@@ -13,7 +13,7 @@ const app = express();
 const angularApp = new AngularNodeAppEngine();
 const apiBaseUrl = process.env['API_BASE_URL'] ?? 'http://127.0.0.1:3000';
 
-app.use(['/api/{*splat}', '/health'], async (req, res, next) => {
+app.use(['/api/{*splat}', '/health', '/ready'], async (req, res, next) => {
   try {
     const headers = new Headers();
     for (const [name, value] of Object.entries(req.headers)) {

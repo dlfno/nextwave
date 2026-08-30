@@ -14,7 +14,7 @@ export default defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'mobile-chromium', testMatch: /viewport\.spec\.ts/, use: { ...devices['Pixel 7'] } },
   ],
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {
     command: 'npm start -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4200',
     reuseExistingServer: !process.env.CI,

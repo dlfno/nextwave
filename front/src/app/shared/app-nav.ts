@@ -1,5 +1,7 @@
-import { Component, input } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { Component, computed, Inject, input, OnInit, PLATFORM_ID, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { ApiClient, User } from '../core/api-client';
 
 @Component({
   selector: 'app-nav',
@@ -13,7 +15,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
         <a routerLink="/mandates" routerLinkActive="active">Mandates</a>
         <a routerLink="/activity" routerLinkActive="active">Activity</a>
       </nav>
-      <a class="account" routerLink="/auth"><span>MP</span><b>{{ userName() }}</b></a>
+      <a class="account" routerLink="/auth"><span>{{ initials() }}</span><b>{{ displayName() }}</b></a>
     </header>
   `,
   styles: [`
@@ -27,4 +29,15 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     @media (max-width: 800px) { .nav { grid-template-columns: 1fr auto; height: 68px; padding: 0 18px; } nav { position: fixed; z-index: 20; left: 50%; bottom: 14px; transform: translateX(-50%); box-shadow: 0 12px 36px rgba(7,16,31,.18); } nav button { display: none; } .account b { display: none; } }
   `],
 })
-export class AppNav { readonly userName = input('Marta'); }
+export class AppNav implements OnInit {
+  readonly userName = input('');
+  readonly user = signal<User | null>(null);
+  readonly displayName = computed(() => this.userName() || this.user()?.displayName || 'Marta');
+  readonly initials = computed(() => this.displayName().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase());
+
+  constructor(private readonly api: ApiClient, @Inject(PLATFORM_ID) private readonly platformId: object) {}
+  ngOnInit(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+    this.api.getMe().subscribe({ next: ({ user }) => this.user.set(user), error: () => undefined });
+  }
+}

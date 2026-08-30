@@ -58,6 +58,22 @@ export function createApp({
   app.use(requireAllowedOrigin(config.frontendOrigin));
 
   app.get('/health', (_request, response) => response.json({ status: 'ok' }));
+  app.get('/ready', async (_request, response) => {
+    const checks = {
+      database: false,
+      mandateSigner: !(mandateSigner instanceof UnavailableMandateSigner),
+      commerce: commerceProviders.some((provider) => provider.id !== 'unavailable-commerce'),
+      paymentCredentialProvider: paymentCredentialProvider.id !== 'stripe-spt',
+    };
+    try {
+      await database.pool.query('SELECT 1');
+      checks.database = true;
+    } catch {
+      checks.database = false;
+    }
+    const ready = Object.values(checks).every(Boolean);
+    response.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', checks });
+  });
   app.use('/api/v1/auth', createAuthRouter(database, config));
   app.use('/api/v1/agents', createAgentRouter(database));
   app.use('/api/v1/purchase-intents', createPurchaseIntentRouter(database, agentProvider));

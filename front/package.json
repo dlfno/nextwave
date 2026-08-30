@@ -6,6 +6,7 @@
     "start": "ng serve",
     "build": "ng build",
     "e2e": "playwright test",
+    "e2e:persisted": "playwright test e2e/persisted-demo.spec.ts --project=desktop-chromium",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "serve:ssr:front": "node dist/front/server/server.mjs"

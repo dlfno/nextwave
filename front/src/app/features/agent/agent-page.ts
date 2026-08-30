@@ -20,7 +20,7 @@ export class AgentPage {
   constructor(route: ActivatedRoute, private readonly api: ApiClient, private readonly router: Router) {
     const state = (typeof history === 'undefined' ? {} : history.state) as { result?: PurchaseIntentResult; prompt?: string };
     const queryPrompt = route.snapshot.queryParamMap.get('prompt');
-    if (state.result) { this.intentId.set(state.result.intent.id); this.messages.set(state.result.messages); }
+    if (state.result) { this.intentId.set(state.result.intent.id); this.messages.set(state.result.messages); this.ready.set(state.result.intent.status === 'READY_FOR_MANDATE'); }
     else {
       const prompt = state.prompt || queryPrompt || 'Buy me a flight to Córdoba if it costs less than $150.';
       this.messages.set([{ role: 'USER', content: prompt }, { role: 'AGENT', content: 'I can help with that. Should this authorization cover one traveler, economy class, and remain valid until the end of this month?' }]);
