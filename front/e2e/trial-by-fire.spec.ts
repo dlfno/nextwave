@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 test('completes the $130 checkout only after human approval', async ({ page }) => {
   await page.goto('/commerce/demo');
-  const offer = page.locator('.offer-card').filter({ hasText: '$130.00' });
+  const offer = page.locator('.offer-card').filter({ hasText: 'USD 130.00' });
   await offer.getByRole('button', { name: 'Get live checkout' }).click();
 
   await expect(page.getByRole('heading', { name: 'Human approval required' })).toBeVisible();
@@ -24,7 +24,7 @@ test('completes the $130 checkout only after human approval', async ({ page }) =
 
 test('rejects the $300 offer with a deterministic amount reason', async ({ page }) => {
   await page.goto('/commerce/demo');
-  const offer = page.locator('.offer-card').filter({ hasText: '$300.00' });
+  const offer = page.locator('.offer-card').filter({ hasText: 'USD 300.00' });
   await offer.getByRole('button', { name: 'Get live checkout' }).click();
 
   await expect(page.getByRole('heading', { name: 'Purchase denied' })).toBeVisible();
@@ -41,7 +41,7 @@ test('live revocation makes the next otherwise-valid attempt fail', async ({ pag
   await expect(page.getByText('Every later purchase attempt will fail.')).toBeVisible();
 
   await page.goto('/commerce/demo');
-  const offer = page.locator('.offer-card').filter({ hasText: '$130.00' });
+  const offer = page.locator('.offer-card').filter({ hasText: 'USD 130.00' });
   await offer.getByRole('button', { name: 'Get live checkout' }).click();
   await expect(page.getByRole('heading', { name: 'Purchase denied' })).toBeVisible();
   await expect(page.getByText('MANDATE_REVOKED')).toBeVisible();
