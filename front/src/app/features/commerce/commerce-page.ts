@@ -1,0 +1,63 @@
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { Component, OnInit, computed, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { finalize, switchMap } from 'rxjs';
+import { ApiClient, CheckoutAttempt, MandateDecision, Offer, PurchaseResult } from '../../core/api-client';
+import { AppNav } from '../../shared/app-nav';
+
+type CommercePhase = 'DISCOVERING' | 'OFFERS' | 'CHECKOUT' | 'SUCCESS';
+
+@Component({ selector: 'app-commerce-page', imports: [AppNav, RouterLink, DatePipe, DecimalPipe], templateUrl: './commerce-page.html', styleUrl: './commerce-page.css' })
+export class CommercePage implements OnInit {
+  readonly intentId: string; readonly demo: boolean;
+  readonly phase = signal<CommercePhase>('DISCOVERING'); readonly offers = signal<Offer[]>([]);
+  readonly selected = signal<Offer | null>(null); readonly attempt = signal<CheckoutAttempt | null>(null);
+  readonly decision = signal<MandateDecision | null>(null); readonly result = signal<PurchaseResult | null>(null);
+  readonly busy = signal(false); readonly error = signal(''); readonly approvalOpen = signal(false);
+  readonly discoverySteps = signal(['Connecting to merchant adapters', 'Normalizing offers']);
+  readonly passedChecks = computed(() => this.decision()?.checks.filter((check) => check.passed).length ?? 0);
+
+  constructor(route: ActivatedRoute, private readonly api: ApiClient) { this.intentId = route.snapshot.paramMap.get('intentId') ?? 'demo'; this.demo = this.intentId === 'demo'; }
+  ngOnInit(): void {
+    if (this.demo) { this.offers.set(this.demoOffers()); this.discoverySteps.set(['Merchant adapters connected', '2 offers normalized', 'Ranking complete']); this.phase.set('OFFERS'); return; }
+    this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers }) => { this.offers.set(offers); this.discoverySteps.set(['Merchant adapters connected', `${offers.length} offers normalized`, 'Ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
+  }
+  choose(offer: Offer): void {
+    this.selected.set(offer); this.busy.set(true); this.error.set(''); this.decision.set(null);
+    if (this.demo) { window.setTimeout(() => { const attempt = this.demoAttempt(offer); this.attempt.set(attempt); this.decision.set(this.demoDecision(offer)); this.phase.set('CHECKOUT'); this.busy.set(false); }, 450); return; }
+    this.api.selectOffer(this.intentId, offer.id).pipe(
+      switchMap((attempt) => { this.attempt.set(attempt); return this.api.evaluateAttempt(attempt.attempt.id); }),
+      finalize(() => this.busy.set(false)),
+    ).subscribe({ next: ({ decision }) => { this.decision.set(decision); this.phase.set('CHECKOUT'); }, error: (error: Error) => this.error.set(error.message) });
+  }
+  backToOffers(): void { this.phase.set('OFFERS'); this.selected.set(null); this.attempt.set(null); this.decision.set(null); this.error.set(''); }
+  approve(): void {
+    const attempt = this.attempt(); if (!attempt) return;
+    this.busy.set(true); this.error.set('');
+    if (this.demo) { this.decision.set(this.demoDecision(this.selected()!, true)); this.approvalOpen.set(false); this.busy.set(false); return; }
+    this.api.decideApproval(attempt.attempt.id, 'APPROVED').pipe(finalize(() => this.busy.set(false))).subscribe({ next: ({ decision }) => { this.decision.set(decision); this.approvalOpen.set(false); }, error: (error: Error) => this.error.set(error.message) });
+  }
+  denyApproval(): void {
+    const attempt = this.attempt(); if (!attempt) return;
+    if (this.demo) { this.approvalOpen.set(false); this.decision.update((decision) => decision ? { ...decision, decision: 'DENY', reasonCode: 'HUMAN_APPROVAL_DENIED' } : decision); return; }
+    this.busy.set(true); this.error.set('');
+    this.api.decideApproval(attempt.attempt.id, 'DENIED').pipe(finalize(() => this.busy.set(false))).subscribe({ next: ({ decision }) => { this.decision.set(decision); this.approvalOpen.set(false); }, error: (error: Error) => this.error.set(error.message) });
+  }
+  purchase(): void {
+    const attempt = this.attempt(); if (!attempt || this.decision()?.decision !== 'ALLOW') return;
+    this.busy.set(true); this.error.set('');
+    if (this.demo) { window.setTimeout(() => { this.result.set(this.demoResult()); this.phase.set('SUCCESS'); this.busy.set(false); }, 550); return; }
+    this.api.executePurchase(attempt.attempt.id).pipe(finalize(() => this.busy.set(false))).subscribe({ next: (result) => { this.result.set(result); this.phase.set('SUCCESS'); }, error: (error: Error) => this.error.set(error.message) });
+  }
+  money(value: string): number { return Number(value) / 100; }
+  reasonLabel(reason: string): string { return reason.toLowerCase().replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase()); }
+  departure(offer: Offer): string { return offer.rawPayload?.departureTime ?? (offer.merchantProductId.includes('130') ? '2026-09-15T14:00:00Z' : '2026-09-15T16:00:00Z'); }
+
+  private demoOffers(): Offer[] { const base = { merchantId: 'vuelaya', category: 'travel.flight', currency: 'USD', availability: 'IN_STOCK', sourceType: 'MOCK', observedAt: new Date().toISOString(), confidence: 1, supportsAuthoritativeCheckout: true, authoritative: false as const }; return [
+    { ...base, id: 'offer-130', merchantProductId: 'VY-MEX-COR-130', productName: 'Mexico City to Córdoba', description: 'Economy, one stop in Lima', unitPriceMinor: '13000', rank: 1, rawPayload: { departureTime: '2026-09-15T14:00:00Z' } },
+    { ...base, id: 'offer-300', merchantProductId: 'VY-MEX-COR-300', productName: 'Mexico City to Córdoba Premium', description: 'Premium cabin, flexible ticket', unitPriceMinor: '30000', rank: 2, rawPayload: { departureTime: '2026-09-15T16:00:00Z' } },
+  ]; }
+  private demoAttempt(offer: Offer): CheckoutAttempt { return { attempt: { id: `attempt-${offer.id}`, status: 'QUOTED', mandateId: 'demo', mandateVersionId: 'demo-v1', selectedOfferId: offer.id }, quote: { id: `quote-${offer.id}`, totalMinor: offer.unitPriceMinor, currency: offer.currency, observedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 300000).toISOString() }, checkout: { id: `checkout-${offer.id}`, merchantId: 'vuelaya', totalMinor: offer.unitPriceMinor, currency: offer.currency, expiresAt: new Date(Date.now() + 300000).toISOString(), checkoutHash: '6Jh3Kp9aR2vL8nQ5mX1cT7sY4dW0fB', lineItems: [{ productName: offer.productName, quantity: 1, totalMinor: offer.unitPriceMinor, currency: offer.currency }] }, verification: { signatureValid: true, expired: false, replayed: false, hashValid: true, valid: true }, priceDriftMinor: '0' }; }
+  private demoDecision(offer: Offer, approved = false): MandateDecision { const over = Number(offer.unitPriceMinor) > 15000; const requires = !over && !approved; const decision = over ? 'DENY' : requires ? 'REQUIRE_HUMAN_APPROVAL' : 'ALLOW'; const reasonCode = over ? 'AMOUNT_EXCEEDS_MANDATE' : requires ? 'HUMAN_APPROVAL_REQUIRED' : 'ALL_CONSTRAINTS_SATISFIED'; const names = ['MANDATE_SIGNATURE_VALID', 'AUTHORIZED_AGENT', 'MANDATE_ACTIVE', 'NOT_REVOKED', 'CHECKOUT_SIGNATURE_VALID', 'MERCHANT_ALLOWED', 'CATEGORY_ALLOWED', 'AMOUNT_WITHIN_LIMIT', 'HUMAN_APPROVAL']; return { decision, reasonCode, mandateVersion: 1, checkoutHash: '6Jh3Kp9aR2vL8nQ5mX1cT7sY4dW0fB', evaluatedAt: new Date().toISOString(), checks: names.map((name) => ({ name, passed: name === 'AMOUNT_WITHIN_LIMIT' ? !over : name === 'HUMAN_APPROVAL' ? approved : true, ...((name === 'AMOUNT_WITHIN_LIMIT' && over) ? { reasonCode } : {}) })) }; }
+  private demoResult(): PurchaseResult { return { transaction: { id: 'txn_8f3c1a27', status: 'SUCCEEDED', amountMinor: '13000', currency: 'USD' }, order: { id: 'order_19ae72', merchantOrderId: 'VY-ORDER-84M2Q', status: 'CONFIRMED', totalMinor: '13000', currency: 'USD', items: [{ productName: 'Mexico City to Córdoba', quantity: 1 }] }, receipt: { id: 'receipt_42bd', payloadHash: 'aV7kP2nX9mR4cT8wQ1sF6gH3jL', issuedAt: new Date().toISOString() }, credential: { provider: 'MOCK_SPT', merchantId: 'vuelaya', maxAmountMinor: '13000', currency: 'USD', status: 'CONSUMED', expiresAt: new Date(Date.now() + 60000).toISOString() } }; }
+}

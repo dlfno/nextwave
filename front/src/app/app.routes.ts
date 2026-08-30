@@ -7,5 +7,6 @@ export const routes: Routes = [
   { path: 'agent', loadComponent: () => import('./features/agent/agent-page').then((m) => m.AgentPage) },
   { path: 'mandates', loadComponent: () => import('./features/mandates/mandate-list-page').then((m) => m.MandateListPage) },
   { path: 'mandates/:mandateId', loadComponent: () => import('./features/mandates/mandate-detail-page').then((m) => m.MandateDetailPage) },
+  { path: 'commerce/:intentId', loadComponent: () => import('./features/commerce/commerce-page').then((m) => m.CommercePage) },
   { path: '**', redirectTo: 'intent' },
 ];

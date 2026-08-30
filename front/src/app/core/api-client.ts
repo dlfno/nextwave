@@ -23,6 +23,29 @@ export interface MandateVersion {
   canonicalPayload: AuthorizationSpecification; payloadHash: string | null; signatureVerified: boolean | null;
 }
 export interface MandateDetail { mandate: MandateSummary; versions: MandateVersion[]; revocations: { reason: string | null; revokedAt: string }[]; }
+export interface Offer {
+  id: string; merchantId: string; merchantProductId: string; productName: string; description?: string;
+  category: string; unitPriceMinor: string; currency: string; availability: string; sourceType: string;
+  observedAt: string; confidence: number; supportsAuthoritativeCheckout: boolean; rank: number; authoritative: false;
+  rawPayload?: { departureTime?: string; attributes?: Record<string, unknown> };
+}
+export interface CheckoutAttempt {
+  attempt: { id: string; status: string; mandateId: string; mandateVersionId: string; selectedOfferId: string; reasonCode?: string | null };
+  quote: { id: string; totalMinor: string; currency: string; observedAt: string; expiresAt: string };
+  checkout: { id: string; merchantId: string; totalMinor: string; currency: string; expiresAt: string; checkoutHash: string; lineItems: { productName: string; quantity: number; totalMinor: string; currency: string }[] };
+  verification: { signatureValid: boolean; expired: boolean; replayed: boolean; hashValid: boolean; valid: boolean };
+  priceDriftMinor: string;
+}
+export interface MandateDecision {
+  decision: 'ALLOW' | 'DENY' | 'REQUIRE_HUMAN_APPROVAL'; reasonCode: string; mandateVersion: number;
+  checkoutHash: string; evaluatedAt: string; checks: { name: string; passed: boolean; reasonCode?: string }[];
+}
+export interface PurchaseResult {
+  transaction: { id: string; status: string; amountMinor: string; currency: string };
+  order: { id: string; merchantOrderId: string; status: string; totalMinor: string; currency: string; items: { productName: string; quantity: number }[] };
+  receipt: { id: string; payloadHash: string; issuedAt: string };
+  credential: { provider: string; merchantId: string; maxAmountMinor: string; currency: string; status: string; expiresAt: string };
+}
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -72,6 +95,21 @@ export class ApiClient {
   }
   revokeMandate(id: string, reason?: string): Observable<MandateDetail> {
     return this.request('post', `/mandates/${id}/revoke`, reason ? { reason } : {});
+  }
+  startDiscovery(intentId: string): Observable<{ run: { id: string; status: string }; offers: Offer[] }> {
+    return this.request('post', `/purchase-intents/${intentId}/discovery-runs`, {});
+  }
+  selectOffer(intentId: string, offerId: string): Observable<CheckoutAttempt> {
+    return this.request('post', `/purchase-intents/${intentId}/select-offer`, { offerId });
+  }
+  evaluateAttempt(attemptId: string): Observable<{ decision: MandateDecision }> {
+    return this.request('post', `/purchase-attempts/${attemptId}/evaluate`, {});
+  }
+  decideApproval(attemptId: string, decision: 'APPROVED' | 'DENIED'): Observable<{ decision: MandateDecision }> {
+    return this.request('post', `/purchase-attempts/${attemptId}/approval`, { decision });
+  }
+  executePurchase(attemptId: string): Observable<PurchaseResult> {
+    return this.request('post', `/purchase-attempts/${attemptId}/execute`, {});
   }
 
   private request<T>(method: 'get' | 'post', path: string, body?: unknown): Observable<T> {
