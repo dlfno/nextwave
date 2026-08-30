@@ -5,6 +5,9 @@
       <p class="eyebrow">A new purchase</p>
       <h1>What should your agent handle?</h1>
       <p>Describe the outcome. Your agent will clarify the details before anything becomes authorized.</p>
+      @if (comparisonIntentId(); as intentId) {
+        <button class="comparison-shortcut" type="button" (click)="openComparison()"><span>Demo ready</span><strong>View the active multi-merchant mandate</strong><b>↗</b></button>
+      }
     </div>
     <div class="intent-index">
       <div class="preset-list" role="list" aria-label="Purchase examples">

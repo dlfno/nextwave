@@ -10,6 +10,7 @@ export interface PurchaseClientContext {
 }
 export interface IntentMessage { id?: string; role: 'USER' | 'AGENT'; content: string; }
 export interface PurchaseIntentResult { intent: { id: string; status: string }; messages: IntentMessage[]; }
+export interface PurchaseIntentSummary { id: string; agentId: string; status: string; originalRequest: string; createdAt: string; updatedAt: string; }
 export interface AuthorizationSpecification {
   intentDraftHash: string;
   productConstraints: { category: 'travel.flight'; originIata: string; destinationIata: string; departureDate: string; quantity: number };
@@ -98,6 +99,10 @@ export class ApiClient {
 
   getIntent(intentId: string): Observable<PurchaseIntentResult> {
     return this.request<PurchaseIntentResult>('get', `/purchase-intents/${intentId}`);
+  }
+
+  listIntents(): Observable<{ intents: PurchaseIntentSummary[] }> {
+    return this.request('get', '/purchase-intents');
   }
 
   addIntentMessage(intentId: string, content: string): Observable<{ status: string; ready: boolean; messages: IntentMessage[] }> {

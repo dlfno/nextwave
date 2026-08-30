@@ -20,7 +20,7 @@ export class DiscoveryService {
 
   async start(userId: string, intentId: string) {
     const intent = await this.findOwnedIntent(userId, intentId);
-    if (intent.status !== 'MANDATE_AUTHORIZED') {
+    if (!['MANDATE_AUTHORIZED', 'SEARCHING'].includes(intent.status)) {
       throw new HttpError(409, 'MANDATE_AUTHORIZATION_REQUIRED',
         'An active authorized mandate is required before discovery');
     }

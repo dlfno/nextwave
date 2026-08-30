@@ -1,4 +1,5 @@
-import { Component, signal } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
+import { Component, Inject, OnInit, PLATFORM_ID, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { finalize, switchMap } from 'rxjs';
@@ -8,7 +9,7 @@ import { AppNav } from '../../shared/app-nav';
 interface IntentPreset { title: string; caption: string; prompt: string; icon: string; }
 
 @Component({ selector: 'app-intent-page', imports: [FormsModule, AppNav], templateUrl: './intent-page.html', styleUrl: './intent-page.css' })
-export class IntentPage {
+export class IntentPage implements OnInit {
   readonly presets: IntentPreset[] = [
     { title: 'Plan a trip', caption: 'Flights and stays within a precise budget', icon: '✦', prompt: 'Buy me a flight to Córdoba if it costs less than $150, valid until the end of the month.' },
     { title: 'Restock essentials', caption: 'Repeat purchases with frequency limits', icon: '↻', prompt: 'Restock our office coffee when fewer than two bags remain. Spend no more than $80 monthly.' },
@@ -18,10 +19,27 @@ export class IntentPage {
   readonly selected = signal(0);
   readonly busy = signal(false);
   readonly error = signal('');
+  readonly comparisonIntentId = signal<string | null>(null);
   prompt = this.presets[0].prompt;
 
-  constructor(private readonly api: ApiClient, private readonly router: Router) {}
+  constructor(
+    private readonly api: ApiClient,
+    private readonly router: Router,
+    @Inject(PLATFORM_ID) private readonly platformId: object,
+  ) {}
+  ngOnInit(): void {
+    if (!isPlatformBrowser(this.platformId)) return;
+    this.api.listIntents().subscribe({
+      next: ({ intents }) => this.comparisonIntentId.set(
+        intents.find((intent) => ['MANDATE_AUTHORIZED', 'SEARCHING'].includes(intent.status))?.id ?? null,
+      ),
+    });
+  }
   select(index: number): void { this.selected.set(index); this.prompt = this.presets[index].prompt; }
+  openComparison(): void {
+    const intentId = this.comparisonIntentId();
+    if (intentId) void this.router.navigate(['/commerce', intentId]);
+  }
   async continue(): Promise<void> {
     const request = this.prompt.trim();
     if (!request || this.busy()) return;

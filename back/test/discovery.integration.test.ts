@@ -144,6 +144,10 @@ describe.skipIf(!databaseUrl)('discovery API', () => {
         { rank: 3, price: '14500' },
         { rank: 4, price: '30000' },
       ]));
+
+    await user.client.post(`/api/v1/purchase-intents/${user.intentId}/discovery-runs`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(201)
+      .expect(({ body }) => expect(body.offers).toHaveLength(4));
   });
 
   it('requires an authorized mandate before discovery', async () => {
