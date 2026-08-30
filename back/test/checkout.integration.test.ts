@@ -16,6 +16,7 @@ import {
   mandates,
   mandateVersions,
   merchants,
+  orderItems,
   products,
   purchaseIntents,
   paymentCredentials,
@@ -491,6 +492,16 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     expect(await database.db.select().from(receipts)).toHaveLength(3);
 
     const transactionId = executed.body.transaction.id as string;
+    await database.db.insert(orderItems).values({
+      orderId: executed.body.order.id as string,
+      merchantProductId: 'VY-EXTRA-ITEM',
+      productName: 'Additional itinerary item',
+      category: 'travel.flight.extra',
+      quantity: 1,
+      unitPriceMinor: 0n,
+      totalMinor: 0n,
+      currency: 'USD',
+    });
     await user.client.get('/api/v1/transactions').expect(200)
       .expect(({ body }) => expect(body.transactions).toHaveLength(1));
     await user.client.get(`/api/v1/transactions/${transactionId}`).expect(200)

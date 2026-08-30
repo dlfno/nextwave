@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { canonicalize } from 'json-canonicalize';
 
 import type { DatabaseClient } from '../../database/client.js';
@@ -37,7 +37,13 @@ export class RecordsService {
     const rows = await this.database.db.select({
       transaction: transactions,
       merchantName: merchants.name,
-      productName: orderItems.productName,
+      productName: sql<string | null>`(
+        SELECT ${orderItems.productName}
+        FROM ${orderItems}
+        WHERE ${orderItems.orderId} = ${orders.id}
+        ORDER BY ${orderItems.id}
+        LIMIT 1
+      )`,
       mandateVersion: mandateVersions.version,
     })
       .from(transactions)
@@ -47,7 +53,6 @@ export class RecordsService {
       .innerJoin(merchants, eq(merchants.id, checkoutSessions.merchantId))
       .innerJoin(mandateVersions, eq(mandateVersions.id, purchaseAttempts.mandateVersionId))
       .leftJoin(orders, eq(orders.transactionId, transactions.id))
-      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
       .where(eq(purchaseIntents.userId, userId)).orderBy(desc(transactions.createdAt));
     return rows.map(({ transaction, ...context }) => ({ ...this.transaction(transaction), ...context }));
   }
