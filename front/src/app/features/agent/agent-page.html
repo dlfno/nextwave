@@ -1,0 +1,32 @@
+<main class="page-shell agent-shell">
+  <app-nav />
+  <div class="mobile-tabs"><button [class.active]="mobilePanel() === 'chat'" (click)="mobilePanel.set('chat')">Conversation</button><button [class.active]="mobilePanel() === 'context'" (click)="mobilePanel.set('context')">Authorization</button></div>
+  <div class="workspace">
+    <section class="conversation" [class.mobile-hidden]="mobilePanel() !== 'chat'">
+      <header class="conversation-head"><div><p class="eyebrow">Personal purchasing agent</p><h1>Clarify the intent</h1></div><span class="live"><i></i> Active</span></header>
+      <div class="messages" aria-live="polite">
+        <div class="agent-intro"><div class="agent-orb">N</div><p>I’ll turn your request into two precise documents: one for searching, one for authorization.</p></div>
+        @for (message of messages(); track $index) {
+          <article [class.user-message]="message.role === 'USER'" [class.agent-message]="message.role === 'AGENT'">
+            <span>{{ message.role === 'USER' ? 'You' : 'Nextwave agent' }}</span><p>{{ message.content }}</p>
+          </article>
+        }
+        @if (busy()) { <div class="thinking"><i></i><i></i><i></i><span>Checking your constraints</span></div> }
+      </div>
+      <form class="composer" (ngSubmit)="send()"><label for="reply">Reply to your agent</label><textarea id="reply" [(ngModel)]="reply" name="reply" rows="2" placeholder="Add dates, preferences, or limits…"></textarea><div><button type="button" class="attach" aria-label="Attach a file">+</button><span>The agent cannot authorize its own purchases.</span><button type="submit" class="send" [disabled]="!reply.trim() || busy()" aria-label="Send message">↑</button></div></form>
+    </section>
+    <aside class="context" [class.mobile-hidden]="mobilePanel() !== 'context'">
+      <header><div><p class="eyebrow">Authorization context</p><h2>What the system understands</h2></div><span class="draft">Draft</span></header>
+      <div class="route-map" aria-label="Purchase authorization path"><div class="node human"><span>MP</span><small>Marta</small></div><i></i><div class="node ai"><span>AI</span><small>Agent</small></div><i></i><div class="node mandate"><span>✓</span><small>Mandate</small></div><i class="inactive"></i><div class="node merchant"><span>VY</span><small>Merchant</small></div></div>
+      <section class="intent-card"><p>Current intention</p><strong>{{ prompt() }}</strong></section>
+      <section class="constraint-list">
+        <div><span>Product</span><strong>Flight to Córdoba</strong><small>Needs confirmation</small></div>
+        <div><span>Maximum total</span><strong>$150 USD</strong><small class="verified">Detected</small></div>
+        <div><span>Validity</span><strong>End of month</strong><small class="verified">Detected</small></div>
+        <div><span>Final approval</span><strong>Not decided</strong><small>Needs confirmation</small></div>
+      </section>
+      <div class="boundary"><span>Deterministic boundary</span><p>This conversation shapes the mandate. It never approves payment.</p></div>
+      <button class="primary-button review" [disabled]="!ready()">{{ ready() ? 'Review mandate' : 'Finish clarification first' }} <span>↗</span></button>
+    </aside>
+  </div>
+</main>

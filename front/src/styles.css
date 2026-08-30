@@ -1,1 +1,54 @@
-/* You can add global styles to this file, and also import other style files */
+@import "tailwindcss";
+
+:root {
+  --ink: #07101f; --ink-soft: #17243a; --cloud: #f4f7fb; --paper: #fcfdff;
+  --muted: #667085; --line: rgba(15, 36, 66, 0.12); --blue: #315cf4;
+  --blue-deep: #18378f; --mint: #16856a; --amber: #b96c14; --danger: #c7463d;
+  --font-display: "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, monospace;
+  color-scheme: light; font-family: var(--font-display); color: var(--ink); background: #dbe4ef;
+  font-synthesis: none; text-rendering: optimizeLegibility;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body {
+  min-width: 320px;
+  background: radial-gradient(circle at 12% 12%, rgba(104,145,196,.5), transparent 32%),
+    radial-gradient(circle at 82% 20%, rgba(221,157,111,.28), transparent 27%),
+    linear-gradient(145deg, #c6d3e2, #eef2f6 46%, #c8d5e1);
+}
+button, input, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid rgba(49,92,244,.32); outline-offset: 3px; }
+.page-shell {
+  width: min(1500px, calc(100% - 40px)); min-height: calc(100dvh - 40px); margin: 20px auto;
+  overflow: hidden; border: 1px solid rgba(255,255,255,.72); border-radius: 36px;
+  background: rgba(247,250,253,.9); box-shadow: inset 0 1px 0 white, 0 28px 90px rgba(24,55,94,.18);
+}
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 720; letter-spacing: -.04em; text-decoration: none; }
+.brand-mark { position: relative; width: 25px; height: 25px; border-radius: 50%; background: var(--ink); }
+.brand-mark::after { content: ""; position: absolute; width: 9px; height: 9px; right: 3px; top: 3px; border-radius: 50%; background: #79a1ff; }
+.eyebrow { margin: 0; color: var(--blue-deep); font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.primary-button, .secondary-button {
+  display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 9px;
+  border-radius: 999px; padding: 0 22px; border: 0; font-weight: 700; text-decoration: none;
+  transition: transform 240ms cubic-bezier(.2,.8,.2,1), box-shadow 240ms cubic-bezier(.2,.8,.2,1);
+}
+.primary-button { color: white; background: var(--ink); box-shadow: 0 10px 28px rgba(7,16,31,.18); }
+.secondary-button { color: var(--ink); background: rgba(255,255,255,.65); border: 1px solid var(--line); }
+.primary-button:hover, .secondary-button:hover { transform: translateY(-2px); }
+.primary-button:active, .secondary-button:active { transform: scale(.98); }
+.primary-button:disabled { opacity: .55; cursor: wait; transform: none; }
+.field { display: grid; gap: 8px; }
+.field label { font-size: 13px; font-weight: 700; }
+.field input, .field textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 15px; color: var(--ink);
+  background: rgba(255,255,255,.82); padding: 14px 16px; outline: 0;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+.field input:focus, .field textarea:focus { border-color: rgba(49,92,244,.7); box-shadow: 0 0 0 4px rgba(49,92,244,.1); }
+.field-error { color: var(--danger); font-size: 13px; }
+@media (max-width: 767px) { .page-shell { width: 100%; min-height: 100dvh; margin: 0; border: 0; border-radius: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }

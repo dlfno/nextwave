@@ -1,0 +1,29 @@
+<main class="page-shell">
+  <app-nav />
+  <section class="intent-layout">
+    <div class="intro-block">
+      <p class="eyebrow">A new purchase</p>
+      <h1>What should your agent handle?</h1>
+      <p>Describe the outcome. Your agent will clarify the details before anything becomes authorized.</p>
+    </div>
+    <div class="intent-index">
+      <div class="preset-list" role="list" aria-label="Purchase examples">
+        @for (preset of presets; track preset.title; let index = $index) {
+          <button type="button" [class.active]="selected() === index" (click)="select(index)">
+            <span>{{ preset.icon }}</span><span><strong>{{ preset.title }}</strong><small>{{ preset.caption }}</small></span>
+          </button>
+        }
+      </div>
+      <section class="composition">
+        <div class="ambient" aria-hidden="true"><i></i><i></i><i></i><span>Agent</span></div>
+        <div class="composer-card">
+          <p>Express your intent</p>
+          <textarea [(ngModel)]="prompt" rows="5" maxlength="2000" aria-label="Purchase intention"></textarea>
+          <div class="composer-footer"><span>{{ prompt.length }} / 2,000</span><button class="primary-button" type="button" [disabled]="busy() || !prompt.trim()" (click)="continue()">{{ busy() ? 'Starting…' : 'Start conversation' }} <b>↗</b></button></div>
+          @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
+        </div>
+        <div class="guardrail"><span>Shielded</span><strong>No purchase can run from this text alone.</strong><small>The agent first converts it into a structured mandate for your review.</small></div>
+      </section>
+    </div>
+  </section>
+</main>
