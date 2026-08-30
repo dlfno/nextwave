@@ -7,6 +7,7 @@ import { createApp } from '../src/app.js';
 import type { AppConfig } from '../src/config.js';
 import { createDatabaseClient, type DatabaseClient } from '../src/database/client.js';
 import { merchants, products, purchaseIntents } from '../src/database/schema.js';
+import { AEROSUR_MERCHANT_ID, NUBEVIA_MERCHANT_ID } from '../src/modules/discovery/mock-multi-merchant-providers.js';
 import { VUELAYA_MERCHANT_ID } from '../src/modules/discovery/mock-vuelaya-provider.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -39,12 +40,11 @@ describe.skipIf(!databaseUrl)('discovery API', () => {
 
   beforeEach(async () => {
     await database.pool.query('TRUNCATE TABLE users CASCADE');
-    await database.db.insert(merchants).values({
-      id: VUELAYA_MERCHANT_ID,
-      slug: 'vuela-ya',
-      name: 'VuelaYa',
-      status: 'ACTIVE',
-    }).onConflictDoUpdate({ target: merchants.id, set: { status: 'ACTIVE' } });
+    await database.db.insert(merchants).values([
+      { id: VUELAYA_MERCHANT_ID, slug: 'vuela-ya', name: 'VuelaYa', status: 'ACTIVE' },
+      { id: AEROSUR_MERCHANT_ID, slug: 'aerosur', name: 'AeroSur', status: 'ACTIVE' },
+      { id: NUBEVIA_MERCHANT_ID, slug: 'nubevia', name: 'NubeVia', status: 'ACTIVE' },
+    ]).onConflictDoUpdate({ target: merchants.id, set: { status: 'ACTIVE' } });
     await database.db.insert(products).values([
       {
         id: '20000000-0000-4000-8000-000000000001',
@@ -54,6 +54,16 @@ describe.skipIf(!databaseUrl)('discovery API', () => {
       {
         id: '20000000-0000-4000-8000-000000000002',
         canonicalName: 'Mexico City to Córdoba premium flight',
+        category: 'travel.flight',
+      },
+      {
+        id: '20000000-0000-4000-8000-000000000003',
+        canonicalName: 'AeroSur Mexico City to Córdoba flight',
+        category: 'travel.flight',
+      },
+      {
+        id: '20000000-0000-4000-8000-000000000004',
+        canonicalName: 'NubeVia Mexico City to Córdoba flight',
         category: 'travel.flight',
       },
     ]).onConflictDoNothing();
@@ -83,6 +93,20 @@ describe.skipIf(!databaseUrl)('discovery API', () => {
         currency: 'USD',
         rankingPreferences: ['lowest_total_price', 'departure_time'],
       },
+      authorizationSpecification: {
+        intentDraftHash: 'a'.repeat(64),
+        productConstraints: {
+          category: 'travel.flight',
+          originIata: 'MEX',
+          destinationIata: 'COR',
+          departureDate: '2026-09-15',
+          quantity: 1,
+        },
+        spendConstraints: { maxTotalMinor: '15000', currency: 'USD' },
+        merchantConstraints: { allowedMerchants: 'ANY' },
+        validUntil: '2026-09-30T23:59:59.000Z',
+        requiresFinalConfirmation: true,
+      },
     }).where(eq(purchaseIntents.id, intent.body.intent.id));
     return { client, csrfToken, intentId: intent.body.intent.id as string };
   }
@@ -93,20 +117,33 @@ describe.skipIf(!databaseUrl)('discovery API', () => {
       .post(`/api/v1/purchase-intents/${user.intentId}/discovery-runs`)
       .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(201);
 
-    expect(created.body.run).toMatchObject({ status: 'COMPLETED', providerIds: ['mock-vuelaya'] });
+    expect(created.body.run).toMatchObject({
+      status: 'COMPLETED',
+      providerIds: ['mock-vuelaya', 'mock-aerosur-api', 'mock-nubevia-ucp'],
+    });
     expect(created.body.offers.map((offer: Record<string, unknown>) => ({
       rank: offer.rank,
       price: offer.unitPriceMinor,
       authoritative: offer.authoritative,
     }))).toEqual([
-      { rank: 1, price: '13000', authoritative: false },
-      { rank: 2, price: '30000', authoritative: false },
+      { rank: 1, price: '11800', authoritative: false },
+      { rank: 2, price: '13000', authoritative: false },
+      { rank: 3, price: '14500', authoritative: false },
+      { rank: 4, price: '30000', authoritative: false },
     ]);
 
     await user.client.get(`/api/v1/discovery-runs/${created.body.run.id}`).expect(200)
       .expect(({ body }) => expect(body.run.status).toBe('COMPLETED'));
     await user.client.get(`/api/v1/discovery-runs/${created.body.run.id}/offers`).expect(200)
-      .expect(({ body }) => expect(body.offers.map((offer: { rank: number }) => offer.rank)).toEqual([1, 2]));
+      .expect(({ body }) => expect(body.offers.map((offer: { rank: number; unitPriceMinor: string }) => ({
+        rank: offer.rank,
+        price: offer.unitPriceMinor,
+      }))).toEqual([
+        { rank: 1, price: '11800' },
+        { rank: 2, price: '13000' },
+        { rank: 3, price: '14500' },
+        { rank: 4, price: '30000' },
+      ]));
   });
 
   it('requires an authorized mandate before discovery', async () => {

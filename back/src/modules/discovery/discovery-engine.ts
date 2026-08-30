@@ -6,16 +6,42 @@ function departureMillis(offer: { departureTime?: string | undefined }): number 
 }
 
 export class DiscoveryEngine {
-  constructor(private readonly providers: readonly DiscoveryProvider[]) {}
+  constructor(
+    private readonly providers: readonly DiscoveryProvider[],
+    private readonly providerTimeoutMs = 3_000,
+  ) {}
 
   get providerIds(): string[] {
     return this.providers.map((provider) => provider.id);
   }
 
   async discover(specification: SearchSpecification, context: DiscoveryContext): Promise<RankedOffer[]> {
-    const providerResults = await Promise.all(
-      this.providers.map((provider) => provider.search(specification, context)),
-    );
+    return (await this.discoverWithOutcomes(specification, context)).offers;
+  }
+
+  async discoverWithOutcomes(specification: SearchSpecification, context: DiscoveryContext) {
+    const settled = await Promise.allSettled(this.providers.map(async (provider) => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const offers = await Promise.race([
+          provider.search(specification, context),
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('PROVIDER_TIMEOUT')), this.providerTimeoutMs);
+          }),
+        ]);
+        return { providerId: provider.id, offers };
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    }));
+    const providerResults = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value.offers] : []);
+    const outcomes = settled.map((result, index) => ({
+      providerId: this.providers[index]!.id,
+      status: result.status === 'fulfilled' ? 'SUCCEEDED' as const
+        : result.reason instanceof Error && result.reason.message === 'PROVIDER_TIMEOUT'
+          ? 'TIMED_OUT' as const : 'FAILED' as const,
+      offerCount: result.status === 'fulfilled' ? result.value.offers.length : 0,
+    }));
     const offers = providerResults
       .flat()
       .map((offer) => discoveredOfferSchema.parse(offer))
@@ -32,6 +58,9 @@ export class DiscoveryEngine {
       return left.merchantProductId.localeCompare(right.merchantProductId);
     });
 
-    return offers.map((offer, index) => ({ ...offer, rank: index + 1, authoritative: false }));
+    return {
+      offers: offers.map((offer, index) => ({ ...offer, rank: index + 1, authoritative: false as const })),
+      outcomes,
+    };
   }
 }

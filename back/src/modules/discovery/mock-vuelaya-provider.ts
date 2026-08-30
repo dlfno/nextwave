@@ -49,7 +49,14 @@ export class MockVuelaYaDiscoveryProvider implements DiscoveryProvider {
       observedAt: context.observedAt.toISOString(),
       confidence: 1,
       supportsAuthoritativeCheckout: true,
-      attributes: { origin: 'MEX', destination: 'COR', passengers: 1, departureTime, fareClass },
+      attributes: {
+        origin: 'MEX',
+        destination: 'COR',
+        passengers: 1,
+        departureDate: departureTime.slice(0, 10),
+        departureTime,
+        fareClass,
+      },
     };
   }
 }

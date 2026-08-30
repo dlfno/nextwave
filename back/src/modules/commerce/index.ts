@@ -11,4 +11,9 @@ export type {
   CreateCheckoutRequest,
   SignedCheckout,
 } from './commerce-types.js';
-export { MockVuelaYaCommerceProvider, UnavailableCommerceProvider } from './mock-vuelaya-commerce-provider.js';
+export {
+  MockAeroSurCommerceProvider,
+  MockNubeViaCommerceProvider,
+  MockVuelaYaCommerceProvider,
+  UnavailableCommerceProvider,
+} from './mock-vuelaya-commerce-provider.js';

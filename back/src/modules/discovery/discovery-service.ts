@@ -4,7 +4,7 @@ import type { DatabaseClient } from '../../database/client.js';
 import { AuditService } from '../audit/audit-service.js';
 import { discoveryRuns, merchants, offers, purchaseIntents } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
-import { searchSpecificationSchema, type SearchSpecification } from '../purchase-intents/specifications.js';
+import { authorizationSpecificationSchema, searchSpecificationSchema, type SearchSpecification } from '../purchase-intents/specifications.js';
 import { DiscoveryEngine } from './discovery-engine.js';
 import type { DiscoveredOffer, RankedOffer } from './discovery-types.js';
 
@@ -30,6 +30,11 @@ export class DiscoveryService {
       throw new HttpError(409, 'SEARCH_SPECIFICATION_REQUIRED',
         'A valid search specification is required before discovery');
     }
+    const authorization = authorizationSpecificationSchema.safeParse(intent.authorizationSpecification);
+    if (!authorization.success) {
+      throw new HttpError(409, 'AUTHORIZATION_SPECIFICATION_REQUIRED',
+        'A valid authorization specification is required before discovery');
+    }
 
     const startedAt = new Date();
     const [run] = await this.database.db.insert(discoveryRuns).values({
@@ -41,8 +46,20 @@ export class DiscoveryService {
     if (!run) throw new Error('Discovery run insert did not return a row');
 
     try {
-      const rankedOffers = await this.engine.discover(specification.data, { observedAt: startedAt });
-      await this.assertActiveMerchants(rankedOffers);
+      const discovery = await this.engine.discoverWithOutcomes(specification.data, { observedAt: startedAt });
+      const activeMerchants = await this.activeMerchants(discovery.offers);
+      const screenedOffers = discovery.offers
+        .filter((offer) => activeMerchants.has(offer.merchantId))
+        .map((offer) => ({
+          ...offer,
+          preliminaryCompliance: this.preliminaryCompliance(offer, authorization.data),
+        }));
+      screenedOffers.sort((left, right) => {
+        const eligibility = Number(left.preliminaryCompliance.decision === 'INELIGIBLE')
+          - Number(right.preliminaryCompliance.decision === 'INELIGIBLE');
+        return eligibility || left.rank - right.rank;
+      });
+      const rankedOffers = screenedOffers.map((offer, index) => ({ ...offer, rank: index + 1 }));
       const completedAt = new Date();
 
       const storedOffers = await this.database.db.transaction(async (transaction) => {
@@ -64,7 +81,11 @@ export class DiscoveryService {
             observedAt: new Date(offer.observedAt),
             confidence: offer.confidence.toFixed(4),
             supportsAuthoritativeCheckout: offer.supportsAuthoritativeCheckout,
-            rawPayload: { attributes: offer.attributes, departureTime: offer.departureTime },
+            rawPayload: {
+              attributes: offer.attributes,
+              departureTime: offer.departureTime,
+              preliminaryCompliance: offer.preliminaryCompliance,
+            },
           })),
         ).returning();
 
@@ -78,11 +99,18 @@ export class DiscoveryService {
       const byProduct = new Map(storedOffers.map((offer) => [offer.merchantProductId, offer]));
       await this.audit.append({
         eventType: 'DISCOVERY_COMPLETED', actorType: 'AGENT', actorId: intent.agentId, intentId,
-        payload: { runId: run.id, providerIds: this.engine.providerIds, offerCount: rankedOffers.length },
+        payload: { runId: run.id, providerOutcomes: discovery.outcomes, offerCount: rankedOffers.length },
       });
       return {
         run: { ...run, status: 'COMPLETED' as const, completedAt },
-        offers: rankedOffers.map((offer) => this.serializeOffer(byProduct.get(offer.merchantProductId)!, offer.rank)),
+        providerOutcomes: discovery.outcomes,
+        context: {
+          searchSpecification: specification.data,
+          authorizationSpecification: authorization.data,
+        },
+        offers: rankedOffers.map((offer) => this.serializeOffer(
+          byProduct.get(offer.merchantProductId)!, offer.rank, activeMerchants.get(offer.merchantId)!,
+        )),
       };
     } catch (error) {
       await this.database.db.update(discoveryRuns).set({
@@ -106,23 +134,28 @@ export class DiscoveryService {
     const records = await this.database.db.select().from(offers)
       .where(eq(offers.discoveryRunId, runId))
       .orderBy(asc(offers.createdAt), asc(offers.id));
-    const ranked = this.rankStored(records, specification);
+    const merchantNames = await this.activeMerchants(records);
+    const ranked = this.rankStored(
+      records.filter((offer) => merchantNames.has(offer.merchantId)),
+      specification,
+      merchantNames,
+    );
     return { offers: ranked };
   }
 
-  private async assertActiveMerchants(discovered: readonly DiscoveredOffer[]): Promise<void> {
+  private async activeMerchants(discovered: readonly { merchantId: string }[]): Promise<Map<string, string>> {
     const merchantIds = [...new Set(discovered.map((offer) => offer.merchantId))];
-    if (merchantIds.length === 0) return;
-    const active = await this.database.db.select({ id: merchants.id }).from(merchants)
+    if (merchantIds.length === 0) return new Map();
+    const active = await this.database.db.select({ id: merchants.id, name: merchants.name }).from(merchants)
       .where(and(inArray(merchants.id, merchantIds), eq(merchants.status, 'ACTIVE')));
-    if (active.length !== merchantIds.length) {
-      throw new HttpError(503, 'DISCOVERY_MERCHANT_UNAVAILABLE',
-        'A discovery provider returned an unavailable merchant');
-    }
+    return new Map(active.map((merchant) => [merchant.id, merchant.name]));
   }
 
-  private rankStored(records: readonly (typeof offers.$inferSelect)[], specification: SearchSpecification) {
+  private rankStored(records: readonly (typeof offers.$inferSelect)[], specification: SearchSpecification, merchantNames: Map<string, string>) {
     const ranked = [...records].sort((left, right) => {
+      const eligibility = Number(this.isStoredIneligible(left.rawPayload))
+        - Number(this.isStoredIneligible(right.rawPayload));
+      if (eligibility !== 0) return eligibility;
       for (const preference of specification.rankingPreferences) {
         const comparison = preference === 'lowest_total_price'
           ? left.unitPriceMinor < right.unitPriceMinor ? -1 : left.unitPriceMinor > right.unitPriceMinor ? 1 : 0
@@ -131,7 +164,14 @@ export class DiscoveryService {
       }
       return left.merchantProductId.localeCompare(right.merchantProductId);
     });
-    return ranked.map((offer, index) => this.serializeOffer(offer, index + 1));
+    return ranked.map((offer, index) => this.serializeOffer(offer, index + 1, merchantNames.get(offer.merchantId) ?? 'Unavailable merchant'));
+  }
+
+  private isStoredIneligible(rawPayload: unknown): boolean {
+    if (!rawPayload || typeof rawPayload !== 'object' || !('preliminaryCompliance' in rawPayload)) return true;
+    const compliance = rawPayload.preliminaryCompliance;
+    return Boolean(compliance && typeof compliance === 'object'
+      && 'decision' in compliance && compliance.decision === 'INELIGIBLE');
   }
 
   private departureMillis(rawPayload: unknown): number {
@@ -142,14 +182,29 @@ export class DiscoveryService {
     return typeof value === 'string' ? Date.parse(value) : Number.MAX_SAFE_INTEGER;
   }
 
-  private serializeOffer(record: typeof offers.$inferSelect, rank: number) {
+  private serializeOffer(record: typeof offers.$inferSelect, rank: number, merchantName: string) {
     return {
       ...record,
       unitPriceMinor: record.unitPriceMinor.toString(),
       confidence: Number(record.confidence),
+      merchantName,
       rank,
       authoritative: false as const,
     };
+  }
+
+  private preliminaryCompliance(offer: DiscoveredOffer, authorization: ReturnType<typeof authorizationSpecificationSchema.parse>) {
+    const attributes = offer.attributes;
+    const reasons: string[] = [];
+    if (offer.category !== authorization.productConstraints.category) reasons.push('CATEGORY_NOT_ALLOWED');
+    if (attributes.origin !== authorization.productConstraints.originIata) reasons.push('ORIGIN_NOT_ALLOWED');
+    if (attributes.destination !== authorization.productConstraints.destinationIata) reasons.push('DESTINATION_NOT_ALLOWED');
+    if (attributes.departureDate !== authorization.productConstraints.departureDate) reasons.push('DEPARTURE_DATE_NOT_ALLOWED');
+    if (attributes.passengers !== authorization.productConstraints.quantity) reasons.push('QUANTITY_NOT_ALLOWED');
+    if (BigInt(offer.unitPriceMinor) > BigInt(authorization.spendConstraints.maxTotalMinor)) reasons.push('AMOUNT_EXCEEDS_MANDATE');
+    if (offer.currency !== authorization.spendConstraints.currency) reasons.push('CURRENCY_NOT_ALLOWED');
+    if (!offer.supportsAuthoritativeCheckout) reasons.push('AUTHORITATIVE_CHECKOUT_UNAVAILABLE');
+    return { decision: reasons.length === 0 ? 'ELIGIBLE' : 'INELIGIBLE', reasons };
   }
 
   private async findOwnedIntent(userId: string, intentId: string) {

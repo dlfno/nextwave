@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { HttpError } from '../../shared/http-error.js';
 import { VUELAYA_MERCHANT_ID } from '../discovery/mock-vuelaya-provider.js';
+import { AEROSUR_MERCHANT_ID, NUBEVIA_MERCHANT_ID } from '../discovery/mock-multi-merchant-providers.js';
 import type { CheckoutSigner } from './checkout-signer.js';
 import type {
   AuthoritativeQuote,
@@ -12,27 +13,60 @@ import type {
   SignedCheckout,
 } from './commerce-types.js';
 
-const PRODUCT_PRICES: Readonly<Record<string, bigint>> = {
-  'VY-MEX-COR-130': 13_000n,
-  'VY-MEX-COR-300': 30_000n,
+interface MockCatalogEntry {
+  readonly priceMinor: bigint;
+  readonly productName: string;
+  readonly category: string;
+  readonly originIata: string;
+  readonly destinationIata: string;
+  readonly departureDate: string;
+}
+
+const VUELAYA_CATALOG: Readonly<Record<string, MockCatalogEntry>> = {
+  'VY-MEX-COR-130': { priceMinor: 13_000n, productName: 'VuelaYa Mexico City to Córdoba flight', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+  'VY-MEX-COR-300': { priceMinor: 30_000n, productName: 'VuelaYa premium Mexico City to Córdoba flight', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
 };
-const PRODUCT_TRAVEL = { originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' } as const;
+
+interface MockCommerceOptions {
+  readonly id: string;
+  readonly merchantId: string;
+  readonly orderPrefix: string;
+  readonly catalog: Readonly<Record<string, MockCatalogEntry>>;
+}
+
+function isCommerceOptions(value: MockCommerceOptions | Readonly<Record<string, bigint>>): value is MockCommerceOptions {
+  return typeof value.merchantId === 'string' && typeof value.id === 'string' && 'catalog' in value;
+}
 
 export class MockVuelaYaCommerceProvider implements CommerceProvider {
-  readonly id = 'mock-vuelaya-commerce';
-  readonly merchantId = VUELAYA_MERCHANT_ID;
+  readonly id: string;
+  readonly merchantId: string;
+  private readonly options: MockCommerceOptions;
 
   constructor(
     private readonly signer: CheckoutSigner,
-    private readonly livePrices: Readonly<Record<string, bigint>> = PRODUCT_PRICES,
-  ) {}
+    optionsOrPrices: MockCommerceOptions | Readonly<Record<string, bigint>> = {
+      id: 'mock-vuelaya-commerce', merchantId: VUELAYA_MERCHANT_ID,
+      orderPrefix: 'VY', catalog: VUELAYA_CATALOG,
+    },
+  ) {
+    const options: MockCommerceOptions = isCommerceOptions(optionsOrPrices) ? optionsOrPrices : {
+      id: 'mock-vuelaya-commerce', merchantId: VUELAYA_MERCHANT_ID, orderPrefix: 'VY',
+      catalog: Object.fromEntries(Object.entries(VUELAYA_CATALOG).map(([id, entry]) => [
+        id, { ...entry, priceMinor: optionsOrPrices[id] ?? entry.priceMinor },
+      ])),
+    };
+    this.options = options;
+    this.id = options.id;
+    this.merchantId = options.merchantId;
+  }
 
   async getLiveQuote(offer: CommerceOfferReference, currentTime: Date): Promise<AuthoritativeQuote> {
     if (offer.merchantId !== this.merchantId) {
       throw new HttpError(400, 'COMMERCE_MERCHANT_MISMATCH', 'Offer belongs to another merchant');
     }
-    const livePrice = this.livePrices[offer.merchantProductId];
-    if (livePrice === undefined) {
+    const catalogEntry = this.options.catalog[offer.merchantProductId];
+    if (catalogEntry === undefined) {
       throw new HttpError(409, 'OFFER_NO_LONGER_AVAILABLE', 'The selected offer is no longer available');
     }
     const providerQuoteId = `vy-quote-${randomUUID()}`;
@@ -40,12 +74,14 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
     const lineItem = {
       merchantProductId: offer.merchantProductId,
       productId: offer.productId,
-      productName: offer.productName,
-      category: offer.category,
-      ...PRODUCT_TRAVEL,
+      productName: catalogEntry.productName,
+      category: catalogEntry.category,
+      originIata: catalogEntry.originIata,
+      destinationIata: catalogEntry.destinationIata,
+      departureDate: catalogEntry.departureDate,
       quantity: 1,
-      unitPriceMinor: livePrice,
-      totalMinor: livePrice,
+      unitPriceMinor: catalogEntry.priceMinor,
+      totalMinor: catalogEntry.priceMinor,
       currency: offer.currency,
     };
     const payload = {
@@ -53,17 +89,17 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       merchantId: this.merchantId,
       providerQuoteId,
       offerId: offer.offerId,
-      totalMinor: livePrice.toString(),
+      totalMinor: catalogEntry.priceMinor.toString(),
       currency: offer.currency,
       observedAt: currentTime.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      lineItems: [{ ...lineItem, unitPriceMinor: livePrice.toString(), totalMinor: livePrice.toString() }],
+      lineItems: [{ ...lineItem, unitPriceMinor: catalogEntry.priceMinor.toString(), totalMinor: catalogEntry.priceMinor.toString() }],
     };
     return {
       providerQuoteId,
       offerId: offer.offerId,
       merchantId: this.merchantId,
-      totalMinor: livePrice,
+      totalMinor: catalogEntry.priceMinor,
       currency: offer.currency,
       lineItems: [lineItem],
       observedAt: currentTime,
@@ -108,7 +144,29 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       || request.currency !== 'USD' || !request.credentialReference) {
       throw new HttpError(409, 'MERCHANT_PAYMENT_REJECTED', 'Merchant rejected the payment scope');
     }
-    return { merchantOrderId: `VY-ORDER-${randomUUID()}`, completedAt: new Date() };
+    return { merchantOrderId: `${this.options.orderPrefix}-ORDER-${randomUUID()}`, completedAt: new Date() };
+  }
+}
+
+export class MockAeroSurCommerceProvider extends MockVuelaYaCommerceProvider {
+  constructor(signer: CheckoutSigner) {
+    super(signer, {
+      id: 'mock-aerosur-commerce', merchantId: AEROSUR_MERCHANT_ID, orderPrefix: 'AS',
+      catalog: {
+        'AS-MEX-COR-118': { priceMinor: 12_500n, productName: 'AeroSur Mexico City to Córdoba', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+      },
+    });
+  }
+}
+
+export class MockNubeViaCommerceProvider extends MockVuelaYaCommerceProvider {
+  constructor(signer: CheckoutSigner) {
+    super(signer, {
+      id: 'mock-nubevia-ucp-commerce', merchantId: NUBEVIA_MERCHANT_ID, orderPrefix: 'NV',
+      catalog: {
+        'NV-MEX-COR-145': { priceMinor: 14_200n, productName: 'NubeVia Mexico City to Córdoba', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+      },
+    });
   }
 }
 

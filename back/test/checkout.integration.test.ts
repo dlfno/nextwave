@@ -104,6 +104,20 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
         departureDate: '2026-09-15', passengers: 1, currency: 'USD',
         rankingPreferences: ['lowest_total_price'],
       },
+      authorizationSpecification: {
+        intentDraftHash: 'a'.repeat(64),
+        productConstraints: {
+          category: 'travel.flight',
+          originIata: 'MEX',
+          destinationIata: 'COR',
+          departureDate: '2026-09-15',
+          quantity: 1,
+        },
+        spendConstraints: { maxTotalMinor: '15000', currency: 'USD' },
+        merchantConstraints: { allowedMerchants: 'ANY' },
+        validUntil: '2030-12-31T23:59:59.000Z',
+        requiresFinalConfirmation: true,
+      },
     }).where(eq(purchaseIntents.id, intentId));
     const discovery = await client.post(`/api/v1/purchase-intents/${intentId}/discovery-runs`)
       .set('Origin', frontendOrigin).set('X-CSRF-Token', csrfToken).expect(201);

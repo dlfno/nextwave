@@ -29,15 +29,25 @@ export interface MandateVersion {
 }
 export interface MandateDetail { mandate: MandateSummary; versions: MandateVersion[]; revocations: { reason: string | null; revokedAt: string }[]; }
 export interface Offer {
-  id: string; merchantId: string; merchantProductId: string; productName: string; description?: string;
+  id: string; merchantId: string; merchantName: string; merchantProductId: string; productName: string; description?: string;
   category: string; unitPriceMinor: string; currency: string; availability: string; sourceType: string;
   observedAt: string; confidence: number; supportsAuthoritativeCheckout: boolean; rank: number; authoritative: false;
-  rawPayload?: { departureTime?: string; attributes?: Record<string, unknown> };
+  rawPayload?: { departureTime?: string; attributes?: Record<string, unknown>; preliminaryCompliance?: { decision: 'ELIGIBLE' | 'INELIGIBLE'; reasons: string[] } };
+}
+export interface SearchSpecification {
+  origin: { city: string; iata: string }; destination: { city: string; country: string; iata: string };
+  departureDate: string; passengers: number; currency: string;
+}
+export interface DiscoveryResult {
+  run: { id: string; status: string };
+  offers: Offer[];
+  providerOutcomes: { providerId: string; status: 'SUCCEEDED' | 'TIMED_OUT' | 'FAILED'; offerCount: number }[];
+  context: { searchSpecification: SearchSpecification; authorizationSpecification: AuthorizationSpecification };
 }
 export interface CheckoutAttempt {
   attempt: { id: string; status: string; mandateId: string; mandateVersionId: string; selectedOfferId: string; reasonCode?: string | null };
   quote: { id: string; totalMinor: string; currency: string; observedAt: string; expiresAt: string };
-  checkout: { id: string; merchantId: string; totalMinor: string; currency: string; expiresAt: string; checkoutHash: string; lineItems: { productName: string; quantity: number; totalMinor: string; currency: string }[] };
+  checkout: { id: string; merchantId: string; totalMinor: string; currency: string; expiresAt: string; checkoutHash: string; lineItems: { productName: string; quantity: number; totalMinor: string; currency: string; originIata?: string; destinationIata?: string; departureDate?: string }[] };
   verification: { signatureValid: boolean; expired: boolean; replayed: boolean; hashValid: boolean; valid: boolean };
   priceDriftMinor: string;
 }
@@ -114,7 +124,7 @@ export class ApiClient {
   revokeMandate(id: string, reason?: string): Observable<MandateDetail> {
     return this.request('post', `/mandates/${id}/revoke`, reason ? { reason } : {});
   }
-  startDiscovery(intentId: string): Observable<{ run: { id: string; status: string }; offers: Offer[] }> {
+  startDiscovery(intentId: string): Observable<DiscoveryResult> {
     return this.request('post', `/purchase-intents/${intentId}/discovery-runs`, {});
   }
   selectOffer(intentId: string, offerId: string): Observable<CheckoutAttempt> {

@@ -2,7 +2,7 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { finalize, switchMap } from 'rxjs';
-import { ApiClient, CheckoutAttempt, MandateDecision, Offer, PurchaseResult } from '../../core/api-client';
+import { ApiClient, CheckoutAttempt, DiscoveryResult, MandateDecision, Offer, PurchaseResult } from '../../core/api-client';
 import { DemoMandateState } from '../../core/demo-mandate-state';
 import { AppNav } from '../../shared/app-nav';
 
@@ -15,13 +15,14 @@ export class CommercePage implements OnInit {
   readonly selected = signal<Offer | null>(null); readonly attempt = signal<CheckoutAttempt | null>(null);
   readonly decision = signal<MandateDecision | null>(null); readonly result = signal<PurchaseResult | null>(null);
   readonly busy = signal(false); readonly error = signal(''); readonly approvalOpen = signal(false);
+  readonly discoveryContext = signal<DiscoveryResult['context'] | null>(null);
   readonly discoverySteps = signal(['Connecting to merchant adapters', 'Normalizing offers']);
   readonly passedChecks = computed(() => this.decision()?.checks.filter((check) => check.passed).length ?? 0);
 
   constructor(route: ActivatedRoute, private readonly api: ApiClient, private readonly demoState: DemoMandateState) { this.intentId = route.snapshot.paramMap.get('intentId') ?? 'demo'; this.demo = this.intentId === 'demo'; }
   ngOnInit(): void {
     if (this.demo) { this.offers.set(this.demoOffers()); this.discoverySteps.set(['Merchant adapters connected', '2 offers normalized', 'Ranking complete']); this.phase.set('OFFERS'); return; }
-    this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers }) => { this.offers.set(offers); this.discoverySteps.set(['Merchant adapters connected', `${offers.length} offers normalized`, 'Ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
+    this.api.startDiscovery(this.intentId).subscribe({ next: ({ offers, providerOutcomes, context }) => { this.offers.set(offers); this.discoveryContext.set(context); const connected = providerOutcomes.filter((provider) => provider.status === 'SUCCEEDED').length; this.discoverySteps.set([`${connected} merchant adapters responded`, `${offers.length} offers normalized`, 'Mandate screening and ranking complete']); this.phase.set('OFFERS'); }, error: (error: Error) => { this.error.set(error.message); this.phase.set('OFFERS'); } });
   }
   choose(offer: Offer): void {
     this.selected.set(offer); this.busy.set(true); this.error.set(''); this.decision.set(null);
@@ -53,8 +54,16 @@ export class CommercePage implements OnInit {
   money(value: string): number { return Number(value) / 100; }
   reasonLabel(reason: string): string { return reason.toLowerCase().replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase()); }
   departure(offer: Offer): string { return offer.rawPayload?.departureTime ?? (offer.merchantProductId.includes('130') ? '2026-09-15T14:00:00Z' : '2026-09-15T16:00:00Z'); }
+  merchantMark(offer: Offer | null): string { return (offer?.merchantName ?? 'Merchant').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase(); }
+  origin(): string { return this.discoveryContext()?.searchSpecification.origin.iata ?? 'MEX'; }
+  destination(): string { return this.discoveryContext()?.searchSpecification.destination.iata ?? 'COR'; }
+  passengers(): number { return this.discoveryContext()?.searchSpecification.passengers ?? 1; }
+  departureDate(): string { return this.discoveryContext()?.searchSpecification.departureDate ?? '2026-09-15'; }
+  mandateMaximum(): number { return this.money(this.discoveryContext()?.authorizationSpecification.spendConstraints.maxTotalMinor ?? '15000'); }
+  mandateCurrency(): string { return this.discoveryContext()?.authorizationSpecification.spendConstraints.currency ?? 'USD'; }
+  isEligible(offer: Offer): boolean { return offer.rawPayload?.preliminaryCompliance?.decision !== 'INELIGIBLE'; }
 
-  private demoOffers(): Offer[] { const base = { merchantId: 'vuelaya', category: 'travel.flight', currency: 'USD', availability: 'IN_STOCK', sourceType: 'MOCK', observedAt: new Date().toISOString(), confidence: 1, supportsAuthoritativeCheckout: true, authoritative: false as const }; return [
+  private demoOffers(): Offer[] { const base = { merchantId: 'vuelaya', merchantName: 'VuelaYa', category: 'travel.flight', currency: 'USD', availability: 'IN_STOCK', sourceType: 'MOCK', observedAt: new Date().toISOString(), confidence: 1, supportsAuthoritativeCheckout: true, authoritative: false as const }; return [
     { ...base, id: 'offer-130', merchantProductId: 'VY-MEX-COR-130', productName: 'Mexico City to Córdoba', description: 'Economy, one stop in Lima', unitPriceMinor: '13000', rank: 1, rawPayload: { departureTime: '2026-09-15T14:00:00Z' } },
     { ...base, id: 'offer-300', merchantProductId: 'VY-MEX-COR-300', productName: 'Mexico City to Córdoba Premium', description: 'Premium cabin, flexible ticket', unitPriceMinor: '30000', rank: 2, rawPayload: { departureTime: '2026-09-15T16:00:00Z' } },
   ]; }

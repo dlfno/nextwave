@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DiscoveryEngine } from '../src/modules/discovery/discovery-engine.js';
 import { MockVuelaYaDiscoveryProvider } from '../src/modules/discovery/mock-vuelaya-provider.js';
+import { MockAeroSurDiscoveryProvider, MockNubeViaUcpDiscoveryProvider } from '../src/modules/discovery/mock-multi-merchant-providers.js';
 import type { DiscoveredOffer, DiscoveryProvider } from '../src/modules/discovery/discovery-types.js';
 import type { SearchSpecification } from '../src/modules/purchase-intents/specifications.js';
 
@@ -29,6 +30,40 @@ describe('DiscoveryEngine', () => {
     ]);
     expect(offers.every((offer) => offer.authoritative === false)).toBe(true);
     expect(offers.every((offer) => offer.supportsAuthoritativeCheckout)).toBe(true);
+  });
+
+  it('ranks normalized offers across merchant API, mock, and UCP providers', async () => {
+    const engine = new DiscoveryEngine([
+      new MockVuelaYaDiscoveryProvider(),
+      new MockAeroSurDiscoveryProvider(),
+      new MockNubeViaUcpDiscoveryProvider(),
+    ]);
+
+    const result = await engine.discoverWithOutcomes(specification, context);
+
+    expect(result.offers.map((offer) => [offer.rank, offer.providerId, offer.unitPriceMinor])).toEqual([
+      [1, 'mock-aerosur-api', '11800'],
+      [2, 'mock-vuelaya', '13000'],
+      [3, 'mock-nubevia-ucp', '14500'],
+      [4, 'mock-vuelaya', '30000'],
+    ]);
+    expect(result.outcomes.every((outcome) => outcome.status === 'SUCCEEDED')).toBe(true);
+  });
+
+  it('returns healthy merchant results when another provider times out', async () => {
+    const stalled: DiscoveryProvider = {
+      id: 'stalled-provider',
+      search: () => new Promise(() => undefined),
+    };
+    const engine = new DiscoveryEngine([stalled, new MockAeroSurDiscoveryProvider()], 10);
+
+    const result = await engine.discoverWithOutcomes(specification, context);
+
+    expect(result.offers.map((offer) => offer.providerId)).toEqual(['mock-aerosur-api']);
+    expect(result.outcomes).toEqual([
+      { providerId: 'stalled-provider', status: 'TIMED_OUT', offerCount: 0 },
+      { providerId: 'mock-aerosur-api', status: 'SUCCEEDED', offerCount: 1 },
+    ]);
   });
 
   it('returns no invented offer when the mock catalog does not match the search', async () => {

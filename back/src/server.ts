@@ -5,7 +5,12 @@ import pino from 'pino';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabaseClient } from './database/client.js';
-import { Es256CheckoutSigner, MockVuelaYaCommerceProvider } from './modules/commerce/index.js';
+import {
+  Es256CheckoutSigner,
+  MockAeroSurCommerceProvider,
+  MockNubeViaCommerceProvider,
+  MockVuelaYaCommerceProvider,
+} from './modules/commerce/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
 import { OpenAIPurchasingAgentProvider } from './modules/purchase-intents/openai-purchasing-agent-provider.js';
 import { MockPurchasingAgentProvider } from './modules/purchase-intents/purchasing-agent-provider.js';
@@ -31,7 +36,11 @@ const checkoutSigner = await Es256CheckoutSigner.create(
   JSON.parse(checkoutSigningKey) as Record<string, unknown>,
   process.env.VUELAYA_SIGNING_KEY_ID ?? 'vuela-ya-checkout-1',
 );
-const commerceProviders = [new MockVuelaYaCommerceProvider(checkoutSigner)];
+const commerceProviders = [
+  new MockVuelaYaCommerceProvider(checkoutSigner),
+  new MockAeroSurCommerceProvider(checkoutSigner),
+  new MockNubeViaCommerceProvider(checkoutSigner),
+];
 const agentProvider = config.openaiApiKey
   ? new OpenAIPurchasingAgentProvider({
       apiKey: config.openaiApiKey,

@@ -14,7 +14,13 @@ import { createAgentRouter } from './modules/agents/agent-router.js';
 import { createAuthorizationRouter } from './modules/authorization/index.js';
 import { createAuthRouter } from './modules/auth/auth-router.js';
 import { createCheckoutRouter, type CommerceProvider, UnavailableCommerceProvider } from './modules/commerce/index.js';
-import { createDiscoveryRouter, DiscoveryEngine, MockVuelaYaDiscoveryProvider } from './modules/discovery/index.js';
+import {
+  createDiscoveryRouter,
+  DiscoveryEngine,
+  MockAeroSurDiscoveryProvider,
+  MockNubeViaUcpDiscoveryProvider,
+  MockVuelaYaDiscoveryProvider,
+} from './modules/discovery/index.js';
 import { VUELAYA_MERCHANT_ID } from './modules/discovery/mock-vuelaya-provider.js';
 import { createMandateRouter } from './modules/mandates/mandate-router.js';
 import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
@@ -43,7 +49,11 @@ export function createApp({
   logger = pino(),
   agentProvider = new MockPurchasingAgentProvider(),
   mandateSigner = new UnavailableMandateSigner(),
-  discoveryEngine = new DiscoveryEngine([new MockVuelaYaDiscoveryProvider()]),
+  discoveryEngine = new DiscoveryEngine([
+    new MockVuelaYaDiscoveryProvider(),
+    new MockAeroSurDiscoveryProvider(),
+    new MockNubeViaUcpDiscoveryProvider(),
+  ]),
   commerceProviders = [new UnavailableCommerceProvider(VUELAYA_MERCHANT_ID)],
   paymentCredentialProvider = new MockPaymentCredentialProvider(),
 }: AppDependencies): Express {
