@@ -24,7 +24,7 @@ export class IntentPage {
   select(index: number): void { this.selected.set(index); this.prompt = this.presets[index].prompt; }
   async continue(): Promise<void> {
     const request = this.prompt.trim();
-    if (!request) return;
+    if (!request || this.busy()) return;
     this.busy.set(true); this.error.set('');
     const clientContext = await this.clientContext();
     this.api.listAgents().pipe(

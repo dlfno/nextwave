@@ -39,6 +39,16 @@ describe('canonical flight intent compiler', () => {
       .toThrow('not backed by a user message');
   });
 
+  it('drops stale provenance for empty fields without failing the conversation', () => {
+    const incomplete = {
+      ...draft,
+      destination: null,
+      sources: { ...draft.sources, destination: 0 },
+    };
+    expect(validateDraftSources(incomplete, [{ role: 'USER', content: 'I have not chosen a destination.' }]))
+      .toMatchObject({ destination: null, sources: { destination: null } });
+  });
+
   it('rejects unknown airport codes before mandate compilation', () => {
     expect(() => validateDraftSources({ ...draft, origin: { city: 'Imaginary', iata: 'ZZZ' } }, [
       { role: 'USER', content: 'Fly from ZZZ.' },

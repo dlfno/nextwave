@@ -19,7 +19,7 @@
         <div class="composer-card">
           <p>Express your intent</p>
           <textarea [(ngModel)]="prompt" rows="5" maxlength="2000" aria-label="Purchase intention"></textarea>
-          <div class="composer-footer"><span>{{ prompt.length }} / 2,000</span><button class="primary-button" type="button" [disabled]="busy() || !prompt.trim()" (click)="continue()">{{ busy() ? 'Starting…' : 'Start conversation' }} <b>↗</b></button></div>
+          <div class="composer-footer"><span>{{ busy() ? 'Reading your request securely…' : prompt.length + ' / 2,000' }}</span><button class="primary-button" type="button" [disabled]="busy() || !prompt.trim()" (click)="continue()">{{ busy() ? 'Preparing conversation…' : 'Start conversation' }} <b>↗</b></button></div>
           @if (error()) { <p class="field-error" role="alert">{{ error() }}</p> }
         </div>
         <div class="guardrail"><span>Shielded</span><strong>No purchase can run from this text alone.</strong><small>The agent first converts it into a structured mandate for your review.</small></div>

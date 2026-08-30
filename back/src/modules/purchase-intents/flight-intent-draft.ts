@@ -49,7 +49,8 @@ export function validateDraftSources(draft: FlightIntentDraft, messages: Convers
     const value = draft[field];
     const index = draft.sources[field];
     if (value === null) {
-      if (index !== null) throw new Error(`Source supplied for empty field ${field}`);
+      // Clearing stale provenance is safe: an empty field grants no authority.
+      draft.sources[field] = null;
       continue;
     }
     if (index === null || messages[index]?.role !== 'USER') {
