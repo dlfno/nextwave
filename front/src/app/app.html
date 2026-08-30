@@ -1,8 +1,40 @@
-<nav class="nav">
-  <span class="brand">⚡ MandatePay</span>
-  <a routerLink="/human" routerLinkActive="active">👤 Marta (titular)</a>
-  <a routerLink="/merchant" routerLinkActive="active">✈️ VuelaYa (merchant)</a>
-  <a routerLink="/agent" routerLinkActive="active">🤖 Agente</a>
-  <a routerLink="/auditor" routerLinkActive="active">🔍 Auditor</a>
-</nav>
-<router-outlet />
+<div class="shell">
+  <nav class="rail" aria-label="Vistas del demo">
+    <div class="rail-brand">
+      <span class="brand" aria-hidden="true">M</span>
+      <div class="rail-brand__name"><strong>MandatePay</strong><span class="eyebrow">v1 · demo</span></div>
+    </div>
+
+    <a class="rail-cta" routerLink="/human" aria-label="Empezar una compra nueva">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      <span>Nueva compra</span>
+    </a>
+
+    <span class="rail-section">Vistas</span>
+
+    <a routerLink="/human" routerLinkActive="active" aria-label="Marta, titular de la cuenta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" /></svg>
+      <span class="rail-label">Marta <span>Mi espacio</span></span>
+    </a>
+    <a routerLink="/merchant" routerLinkActive="active" aria-label="VuelaYa, el comercio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7 5 5h14l2 2" /><path d="M4 7h16v3a4 4 0 0 1-8 0 4 4 0 0 1-8 0z" /><path d="M5 13v7h14v-7" /></svg>
+      <span class="rail-label">VuelaYa <span>Comercio</span></span>
+    </a>
+    <a routerLink="/agent" routerLinkActive="active" aria-label="Consola del agente">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2M20 14h2M15 13v2M9 13v2" /></svg>
+      <span class="rail-label">Agente <span>Consola</span></span>
+    </a>
+    <a routerLink="/auditor" routerLinkActive="active" aria-label="Vista del auditor">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></svg>
+      <span class="rail-label">Auditor <span>Registro</span></span>
+    </a>
+
+    <div class="rail-foot">
+      <a href="/" aria-label="Reiniciar el recorrido del demo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+        <span class="rail-label">Reiniciar demo</span>
+      </a>
+    </div>
+  </nav>
+  <main class="panel"><router-outlet /></main>
+</div>
