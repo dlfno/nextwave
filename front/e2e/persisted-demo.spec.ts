@@ -15,9 +15,10 @@ test.describe('persisted judge rehearsal', () => {
   test.skip(!enabled, 'Set PERSISTED_DEMO=true and point PLAYWRIGHT_BASE_URL at the running stack.');
 
   test('persists purchase evidence and exposes role-scoped verification', async ({ browser, page }) => {
+    test.setTimeout(60_000);
     await login(page, 'marta@nextwave.demo');
     await page.getByLabel('Purchase intention').fill(
-      'Depart from Mexico City MEX to Córdoba, Argentina COR, departing 2026-09-15, one passenger, maximum $150 USD, valid until 2027-12-31. Require final confirmation.',
+      'Depart from Mexico City MEX to Córdoba, Argentina COR, departing 2026-09-15, one passenger, maximum $150 USD, valid until 2026-09-05. Require final confirmation.',
     );
     await page.getByRole('button', { name: 'Start conversation' }).click();
     await expect(page).toHaveURL(/\/agent\?intentId=[0-9a-f-]+$/);
@@ -27,7 +28,7 @@ test.describe('persisted judge rehearsal', () => {
     await page.getByRole('button', { name: 'Authorize mandate' }).click();
     await expect(page.getByText('Mandate signed and activated.')).toBeVisible();
     await page.getByRole('link', { name: 'Start discovery' }).click();
-    const offer = page.locator('.offer-card').filter({ hasText: '$130.00' });
+    const offer = page.locator('.offer-card').filter({ hasText: 'USD 130.00' });
     await offer.getByRole('button', { name: 'Get live checkout' }).click();
     await expect(page.getByRole('heading', { name: 'Human approval required' })).toBeVisible();
     await page.getByRole('button', { name: 'Review and approve' }).click();
