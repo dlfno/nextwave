@@ -20,4 +20,6 @@ for migration in "$database_dir"/migrations/*.sql; do
 
   echo "apply $name"
   psql "$database_url" -v ON_ERROR_STOP=1 -X -f "$migration"
+  psql "$database_url" -v ON_ERROR_STOP=1 -X -q \
+    -c "INSERT INTO schema_migrations (name) VALUES ('$name') ON CONFLICT (name) DO NOTHING"
 done
