@@ -7,7 +7,10 @@ const environmentSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().positive().max(168).default(12),
   COOKIE_SECURE: z.enum(['true', 'false']).default('false'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().min(1).optional(),
+  ),
   OPENAI_AGENT_MODEL: z.string().min(1).default('gpt-5.6-terra'),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
 });
