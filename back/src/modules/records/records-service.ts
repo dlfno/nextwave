@@ -8,6 +8,7 @@ import {
   disputeEvidence,
   disputes,
   checkoutSessions,
+  merchantOperatorAssignments,
   mandateVersions,
   merchants,
   orderItems,
@@ -89,11 +90,19 @@ export class RecordsService {
     return this.auditProjection(owned.intentId, () => true);
   }
 
-  async merchantVerification(attemptId: string) {
-    const [attempt] = await this.database.db.select().from(purchaseAttempts)
-      .where(eq(purchaseAttempts.id, attemptId)).limit(1);
+  async merchantVerification(operatorId: string, role: string, attemptId: string) {
+    const [attempt] = role === 'ADMIN'
+      ? await this.database.db.select({ attempt: purchaseAttempts }).from(purchaseAttempts)
+        .where(eq(purchaseAttempts.id, attemptId)).limit(1)
+      : await this.database.db.select({ attempt: purchaseAttempts }).from(purchaseAttempts)
+        .innerJoin(checkoutSessions, eq(checkoutSessions.attemptId, purchaseAttempts.id))
+        .innerJoin(merchantOperatorAssignments, and(
+          eq(merchantOperatorAssignments.merchantId, checkoutSessions.merchantId),
+          eq(merchantOperatorAssignments.userId, operatorId),
+        ))
+        .where(eq(purchaseAttempts.id, attemptId)).limit(1);
     if (!attempt) throw new HttpError(404, 'PURCHASE_ATTEMPT_NOT_FOUND', 'Purchase attempt not found');
-    return this.auditProjection(attempt.intentId, (event) => MERCHANT_EVENT_TYPES.has(event.eventType));
+    return this.auditProjection(attempt.attempt.intentId, (event) => MERCHANT_EVENT_TYPES.has(event.eventType));
   }
 
   async auditorEvidence(transactionId: string) {

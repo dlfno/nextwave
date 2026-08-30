@@ -11,6 +11,7 @@ import {
   checkoutSessions,
   humanApprovals,
   mandateEvaluations,
+  merchantOperatorAssignments,
   mandateProductConstraints,
   mandateRevocations,
   mandates,
@@ -32,6 +33,7 @@ import { Es256MandateSigner, type MandateSigner } from '../src/modules/mandates/
 import { approvalPayload } from '../src/modules/authorization/approval-evidence.js';
 import { Ap2CredentialIssuer } from '../src/modules/mandates/ap2-credential.js';
 import { MockPaymentCredentialProvider } from '../src/modules/payments/mock-payment-credential-provider.js';
+import { RecordsService } from '../src/modules/records/records-service.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const frontendOrigin = 'http://localhost:4200';
@@ -519,6 +521,16 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
     );
     expect(JSON.stringify(audit.body)).not.toContain('tokenHash');
     expect(JSON.stringify(audit.body)).not.toContain('secret');
+
+    const recordsService = new RecordsService(database);
+    await expect(recordsService.merchantVerification(user.userId, 'MERCHANT_OPERATOR', attemptId))
+      .rejects.toMatchObject({ status: 404, code: 'PURCHASE_ATTEMPT_NOT_FOUND' });
+    await database.db.insert(merchantOperatorAssignments).values({
+      merchantId: VUELAYA_MERCHANT_ID,
+      userId: user.userId,
+    });
+    await expect(recordsService.merchantVerification(user.userId, 'MERCHANT_OPERATOR', attemptId))
+      .resolves.toMatchObject({ integrity: { valid: true } });
 
     await database.db.update(users).set({ role: 'MERCHANT_OPERATOR' }).where(eq(users.id, user.userId));
     const merchant = await user.client.get(`/api/v1/merchant/verifications/${attemptId}`).expect(200);

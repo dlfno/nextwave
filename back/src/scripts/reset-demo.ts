@@ -51,6 +51,7 @@ async function reset(): Promise<void> {
       ('30000000-0000-4000-8000-000000000001', 'marta@nextwave.demo', $1, 'Marta Pérez', 'HUMAN'),
       ('30000000-0000-4000-8000-000000000002', 'merchant@nextwave.demo', $1, 'VuelaYa Operator', 'MERCHANT_OPERATOR'),
       ('30000000-0000-4000-8000-000000000003', 'auditor@nextwave.demo', $1, 'Independent Auditor', 'AUDITOR')`, [passwordHash]);
+    await ensureDemoMerchantOperator();
     await client.query(`INSERT INTO agents (id, owner_user_id, name, status, current_key_id) VALUES
       ('31000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001',
        'Marta purchasing agent', 'ACTIVE', 'demo-agent-key-1')`);
@@ -66,6 +67,7 @@ async function reset(): Promise<void> {
 async function ensureDefaultDemoPurchase(): Promise<void> {
   const account = await client.query('SELECT 1 FROM users WHERE id = $1', [demoUserId]);
   if (!account.rowCount) return;
+  await ensureDemoMerchantOperator();
   const draft: FlightIntentDraft = {
     origin: { city: 'Mexico City', iata: 'MEX' },
     destination: { city: 'Córdoba', country: 'Argentina', iata: 'COR' },
@@ -176,4 +178,11 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
 
   const created = await mandateService.createDraft(demoUserId, demoIntentId, 'AUTONOMOUS');
   await mandateService.authorize(demoUserId, created.mandate.id);
+}
+
+async function ensureDemoMerchantOperator(): Promise<void> {
+  await client.query(`INSERT INTO merchant_operator_assignments (merchant_id, user_id)
+    SELECT '10000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002'
+    WHERE EXISTS (SELECT 1 FROM merchants WHERE id = '10000000-0000-4000-8000-000000000001')
+    ON CONFLICT (merchant_id, user_id) DO NOTHING`);
 }

@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, date, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, date, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const citext = customType<{ data: string }>({
   dataType: () => 'citext',
@@ -109,6 +109,15 @@ export const merchants = pgTable('merchants', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const merchantOperatorAssignments = pgTable('merchant_operator_assignments', {
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.merchantId, table.userId] }),
+  index('merchant_operator_assignments_user_idx').on(table.userId, table.merchantId),
+]);
 
 export const products = pgTable('products', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -49,7 +49,11 @@ export function createRecordsRouter(database: DatabaseClient): Router {
   });
   router.get('/merchant/verifications/:attemptId', async (request, response) => {
     requireRole(request.auth!.user.role, ['MERCHANT_OPERATOR', 'ADMIN']);
-    response.json(await service.merchantVerification(uuid(request.params.attemptId, 'PURCHASE_ATTEMPT_NOT_FOUND')));
+    response.json(await service.merchantVerification(
+      request.auth!.user.id,
+      request.auth!.user.role,
+      uuid(request.params.attemptId, 'PURCHASE_ATTEMPT_NOT_FOUND'),
+    ));
   });
   router.get('/auditor/transactions/:transactionId/evidence', async (request, response) => {
     requireRole(request.auth!.user.role, ['AUDITOR', 'ADMIN']);
