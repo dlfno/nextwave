@@ -55,7 +55,11 @@ export class PurchaseIntentService {
             intentId: intent.id,
             role: 'AGENT',
             content: clarification.message,
-            structuredPayload: { type: 'CLARIFICATION', missingFields: clarification.missingFields },
+            structuredPayload: {
+              type: 'CLARIFICATION',
+              missingFields: clarification.missingFields,
+              ...(clarification.metadata ?? {}),
+            },
             sequence: 1,
           },
         ])
@@ -66,7 +70,12 @@ export class PurchaseIntentService {
     await this.audit.append({
       eventType: 'PURCHASE_INTENT_CREATED', actorType: 'USER', actorId: userId,
       intentId: result.intent.id,
-      payload: { originalRequest: input.originalRequest, agentId: input.agentId, status },
+      payload: {
+        originalRequest: input.originalRequest,
+        agentId: input.agentId,
+        status,
+        clarificationMetadata: clarification.metadata ?? null,
+      },
     });
     return result;
   }
@@ -119,7 +128,11 @@ export class PurchaseIntentService {
             intentId,
             role: 'AGENT',
             content: clarification.message,
-            structuredPayload: { type: 'CLARIFICATION', missingFields: clarification.missingFields },
+            structuredPayload: {
+              type: 'CLARIFICATION',
+              missingFields: clarification.missingFields,
+              ...(clarification.metadata ?? {}),
+            },
             sequence: nextSequence + 1,
           },
         ])
@@ -138,7 +151,12 @@ export class PurchaseIntentService {
     });
     await this.audit.append({
       eventType: 'INTENT_CLARIFIED', actorType: 'USER', actorId: userId, intentId,
-      payload: { status, ready: clarification.ready, missingFields: clarification.missingFields },
+      payload: {
+        status,
+        ready: clarification.ready,
+        missingFields: clarification.missingFields,
+        clarificationMetadata: clarification.metadata ?? null,
+      },
     });
     return result;
   }
@@ -151,7 +169,6 @@ export class PurchaseIntentService {
         authorizationSpecification: intent.authorizationSpecification,
       };
     }
-
     const draft = flightIntentDraftSchema.safeParse(intent.intentDraft);
     if (!draft.success) {
       throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'More information is required', {
@@ -163,6 +180,11 @@ export class PurchaseIntentService {
       throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'More information is required', {
         missingFields: missing.map((field) => field === 'maxTotalMinor' ? 'maxTotal'
           : field === 'requiresFinalConfirmation' ? 'finalConfirmation' : field),
+      });
+    }
+    if (intent.status !== 'READY_FOR_MANDATE') {
+      throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'Ambiguities or policy violations must be resolved', {
+        missingFields: [],
       });
     }
 

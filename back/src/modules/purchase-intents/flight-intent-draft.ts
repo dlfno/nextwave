@@ -6,7 +6,7 @@ import type { Specifications } from './specifications.js';
 
 const iataCode = z.string().regex(/^[A-Z]{3}$/);
 const currencyCode = z.string().regex(/^[A-Z]{3}$/);
-const sourceIndex = z.number().int().nonnegative().nullable();
+const sourceIndex = z.union([z.number().int().nonnegative(), z.literal('default')]).nullable();
 
 export const flightIntentDraftSchema = z.object({
   origin: z.object({ city: z.string().min(1), iata: iataCode }).strict().nullable(),
@@ -45,6 +45,7 @@ const AIRPORTS = new Map([
 ]);
 
 export function validateDraftSources(draft: FlightIntentDraft, messages: ConversationMessage[]): FlightIntentDraft {
+  const userMessages = messages.filter((message) => message.role === 'USER');
   for (const field of FLIGHT_INTENT_FIELDS) {
     const value = draft[field];
     const index = draft.sources[field];
@@ -53,7 +54,13 @@ export function validateDraftSources(draft: FlightIntentDraft, messages: Convers
       draft.sources[field] = null;
       continue;
     }
-    if (index === null || messages[index]?.role !== 'USER') {
+    if (index === 'default') {
+      const permitted = (field === 'passengers' && value === 1)
+        || (field === 'requiresFinalConfirmation' && value === true);
+      if (!permitted) throw new Error(`Field ${field} uses an impermissible default`);
+      continue;
+    }
+    if (index === null || !userMessages[index]) {
       throw new Error(`Field ${field} is not backed by a user message`);
     }
   }

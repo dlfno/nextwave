@@ -209,4 +209,45 @@ describe.skipIf(!databaseUrl)('purchase intent conversation and specifications',
       .expect(502)
       .expect(({ body }) => expect(body.error.code).toBe('AGENT_OUTPUT_INVALID'));
   });
+
+  it('does not finalize a complete-looking draft while the provider reports a violation', async () => {
+    const flaggedProvider: PurchasingAgentProvider = {
+      async analyze(): Promise<ClarificationResult> {
+        return {
+          ready: false,
+          missingFields: ['validUntil'],
+          message: 'The expiration must be corrected.',
+          draft: {
+            origin: { city: 'Mexico City', iata: 'MEX' },
+            destination: { city: 'Córdoba', country: 'Argentina', iata: 'COR' },
+            departureDate: '2026-09-15', passengers: 1, maxTotalMinor: '15000', currency: 'USD',
+            validUntil: '2027-09-15T23:59:59Z', requiresFinalConfirmation: true,
+            sources: { origin: 0, destination: 0, departureDate: 0, passengers: 0, maxTotalMinor: 0, currency: 0, validUntil: 0, requiresFinalConfirmation: 0 },
+          },
+          metadata: {
+            ambiguous: [], defaultsApplied: [], superseded: [],
+            flags: {
+              injectionAttempts: [],
+              violations: [{ key: 'validUntil', reason: 'Expiration exceeds 30 days' }],
+              outOfCatalog: [],
+            },
+          },
+        };
+      },
+    };
+    const flaggedApp = createApp({
+      config: testConfig, database, logger: pino({ level: 'silent' }), agentProvider: flaggedProvider,
+    });
+    const user = await createUser('flagged-provider@example.com', flaggedApp);
+    const created = await user.client.post('/api/v1/purchase-intents').set('Origin', frontendOrigin)
+      .set('X-CSRF-Token', user.csrfToken).send({
+        agentId: user.agentId,
+        originalRequest: 'Buy one MEX to COR flight under USD 150 with a one-year mandate.',
+      }).expect(201);
+    expect(created.body.intent.status).toBe('CLARIFYING');
+    expect(created.body.messages[1].structuredPayload.flags.violations).toHaveLength(1);
+    await user.client.post(`/api/v1/purchase-intents/${created.body.intent.id}/finalize-specifications`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(409)
+      .expect(({ body }) => expect(body.error.code).toBe('CLARIFICATION_REQUIRED'));
+  });
 });

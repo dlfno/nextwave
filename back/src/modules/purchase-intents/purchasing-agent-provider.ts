@@ -11,6 +11,18 @@ export interface ClarificationResult {
   missingFields: string[];
   message: string;
   draft?: FlightIntentDraft;
+  metadata?: ClarificationMetadata;
+}
+
+export interface ClarificationMetadata {
+  ambiguous: { key: string; reason: string; candidates: string[]; src: number | null }[];
+  defaultsApplied: { key: string; value: string; reason: string }[];
+  superseded: { key: string; previousValue: string; src: number }[];
+  flags: {
+    injectionAttempts: string[];
+    violations: { key: string; reason: string }[];
+    outOfCatalog: { key: string; value: string }[];
+  };
 }
 
 export interface PurchasingAgentProvider {
@@ -103,7 +115,7 @@ export class MockPurchasingAgentProvider implements PurchasingAgentProvider {
   async analyze(messages: ConversationMessage[]): Promise<ClarificationResult> {
     const intent = extract(messages);
     const missing = missingFields(intent);
-    const source = messages.reduce((latest, message, index) => message.role === 'USER' ? index : latest, 0);
+    const source = Math.max(0, messages.filter((message) => message.role === 'USER').length - 1);
     const draft: FlightIntentDraft = {
       origin: intent.origin ?? null,
       destination: intent.destination ?? null,

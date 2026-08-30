@@ -54,4 +54,19 @@ describe('canonical flight intent compiler', () => {
       { role: 'USER', content: 'Fly from ZZZ.' },
     ])).toThrow('Unknown origin airport');
   });
+
+  it('allows only narrow non-authority-expanding defaults', () => {
+    const defaulted = {
+      ...draft,
+      passengers: 1,
+      sources: { ...draft.sources, passengers: 'default' as const, requiresFinalConfirmation: 'default' as const },
+    };
+    expect(validateDraftSources(defaulted, [{ role: 'USER', content: 'The remaining facts are explicit.' }]))
+      .toMatchObject({ passengers: 1, requiresFinalConfirmation: true });
+    expect(() => validateDraftSources({
+      ...draft,
+      maxTotalMinor: '200000',
+      sources: { ...draft.sources, maxTotalMinor: 'default' },
+    }, [{ role: 'USER', content: 'Choose a budget for me.' }])).toThrow('impermissible default');
+  });
 });
