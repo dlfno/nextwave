@@ -50,6 +50,20 @@ The clarification provider uses Luna today. The research model setting reserves
 Terra for the multi-merchant discovery/ranking milestone; configuring it now does
 not cause research calls or spend until that provider is implemented and invoked.
 
+Intent creation also records trusted browser context: IANA timezone, locale,
+request time, and—only after browser permission—coarsened city-level coordinates.
+This lets the agent resolve phrases such as `tomorrow` and `end of the month`
+without repeatedly asking for timezone details. Coordinates are rounded before
+leaving the browser. The context is a convenience signal, never purchasing
+authority.
+
+AP2 secures the mandate and payment evidence after intent is understood; it does
+not gather a user profile. UCP can carry buyer, fulfillment, and provisional
+context data to a merchant checkout, but Nextwave remains responsible for storing,
+verifying, and selectively disclosing that information. Sensitive profile and
+payment fields must not be placed in the LLM prompt merely to avoid a checkout
+question.
+
 ## Purchase intent conversation
 
 Milestone 2 exposes:

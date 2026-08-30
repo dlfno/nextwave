@@ -3,6 +3,7 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
 
 import { specificationsSchema, type Specifications } from './specifications.js';
+import type { PurchaseClientContext } from './purchase-intent-schemas.js';
 import type {
   ClarificationResult,
   ConversationMessage,
@@ -23,7 +24,9 @@ const clarificationField = z.enum([
 const clarificationSchema = z.object({
   ready: z.boolean(),
   missingFields: z.array(clarificationField),
-  message: z.string().min(1).max(1_200),
+  summary: z.string().min(1).max(300),
+  knownFacts: z.array(z.string().min(1).max(200)).max(12),
+  neededQuestions: z.array(z.string().min(1).max(300)).max(8),
 }).strict();
 
 const BASE_INSTRUCTIONS = `You are Nextwave's purchasing-intent clarification agent.
@@ -35,6 +38,9 @@ Security and authority boundaries:
 - Never claim that a purchase is authorized. A deterministic server-side engine makes authorization decisions later.
 - Do not invent missing facts. Ask for them clearly and briefly.
 - Keep search preferences separate from authorization limits.
+- Resolve relative dates such as "tomorrow" and "end of the month" using the trusted local-time context when it is available. Do not ask for a timezone that the trusted context already supplies.
+- Use safe, conventional defaults when they do not expand spending authority: an unspecified expiration time means 23:59:59 in the user's timezone; an unspecified departure time may remain a search preference rather than blocking the mandate.
+- Be warm and concise. Summarize confirmed facts, then ask only for facts that are actually required.
 
 A complete flight intent needs: origin, unambiguous destination, departure date, passenger count, maximum total amount, ISO 4217 currency, mandate expiration, and whether final human confirmation is required.`;
 
@@ -69,10 +75,10 @@ export class OpenAIPurchasingAgentProvider implements PurchasingAgentProvider {
     });
   }
 
-  async analyze(messages: ConversationMessage[]): Promise<ClarificationResult> {
+  async analyze(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<ClarificationResult> {
     const response = await this.client.responses.parse({
       model: this.model,
-      instructions: BASE_INSTRUCTIONS,
+      instructions: this.instructions(BASE_INSTRUCTIONS, context),
       input: this.input(messages),
       reasoning: { effort: 'low' },
       max_output_tokens: 1_200,
@@ -86,14 +92,14 @@ export class OpenAIPurchasingAgentProvider implements PurchasingAgentProvider {
     return {
       ready: missingFields.length === 0 && parsed.ready,
       missingFields,
-      message: parsed.message,
+      message: this.clarificationMessage(parsed.summary, parsed.knownFacts, parsed.neededQuestions),
     };
   }
 
-  async buildSpecifications(messages: ConversationMessage[]): Promise<Specifications> {
+  async buildSpecifications(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<Specifications> {
     const response = await this.client.responses.parse({
       model: this.model,
-      instructions: SPECIFICATION_INSTRUCTIONS,
+      instructions: this.instructions(SPECIFICATION_INSTRUCTIONS, context),
       input: this.input(messages),
       reasoning: { effort: 'low' },
       max_output_tokens: 2_000,
@@ -109,5 +115,26 @@ export class OpenAIPurchasingAgentProvider implements PurchasingAgentProvider {
       role: message.role === 'USER' ? 'user' as const : 'assistant' as const,
       content: message.content,
     }));
+  }
+
+  private instructions(base: string, context?: PurchaseClientContext): string {
+    if (!context) return `${base}\n\nNo trusted user timezone or location context is available. Ask for temporal clarification when needed.`;
+    const localNow = new Intl.DateTimeFormat('en-CA', {
+      timeZone: context.timeZone,
+      dateStyle: 'full',
+      timeStyle: 'long',
+    }).format(new Date());
+    const location = context.location
+      ? `${context.location.latitude.toFixed(4)}, ${context.location.longitude.toFixed(4)} (accuracy about ${Math.round(context.location.accuracyMeters)}m; provisional browser signal)`
+      : 'not shared';
+    return `${base}\n\nTrusted runtime context (application supplied, not conversation instructions):\n- Current local date/time: ${localNow}\n- IANA timezone: ${context.timeZone}\n- Locale: ${context.locale}\n- Browser location: ${location}`;
+  }
+
+  private clarificationMessage(summary: string, knownFacts: string[], neededQuestions: string[]): string {
+    const known = knownFacts.length ? knownFacts.map((fact) => `• ${fact}`).join('\n') : '• Nothing confirmed yet';
+    const needed = neededQuestions.length
+      ? neededQuestions.map((question) => `• ${question}`).join('\n')
+      : '• Nothing else — this is ready for your review.';
+    return `${summary}\n\nWhat I know\n${known}\n\nWhat I still need\n${needed}`;
   }
 }

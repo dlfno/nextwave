@@ -4,6 +4,10 @@ import { Observable, catchError, throwError } from 'rxjs';
 
 export interface User { id: string; email: string; displayName: string; role: string; }
 export interface Agent { id: string; name: string; status: string; }
+export interface PurchaseClientContext {
+  timeZone: string; locale: string; observedAt: string;
+  location?: { latitude: number; longitude: number; accuracyMeters: number };
+}
 export interface IntentMessage { id?: string; role: 'USER' | 'AGENT'; content: string; }
 export interface PurchaseIntentResult { intent: { id: string; status: string }; messages: IntentMessage[]; }
 export interface AuthorizationSpecification {
@@ -77,8 +81,8 @@ export class ApiClient {
     return this.request<{ agent: Agent }>('post', '/agents', { name });
   }
 
-  createIntent(agentId: string, originalRequest: string): Observable<PurchaseIntentResult> {
-    return this.request<PurchaseIntentResult>('post', '/purchase-intents', { agentId, originalRequest });
+  createIntent(agentId: string, originalRequest: string, clientContext: PurchaseClientContext): Observable<PurchaseIntentResult> {
+    return this.request<PurchaseIntentResult>('post', '/purchase-intents', { agentId, originalRequest, clientContext });
   }
 
   getIntent(intentId: string): Observable<PurchaseIntentResult> {

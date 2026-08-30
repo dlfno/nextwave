@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { finalize, switchMap } from 'rxjs';
-import { ApiClient } from '../../core/api-client';
+import { ApiClient, PurchaseClientContext } from '../../core/api-client';
 import { AppNav } from '../../shared/app-nav';
 
 interface IntentPreset { title: string; caption: string; prompt: string; icon: string; }
@@ -22,12 +22,13 @@ export class IntentPage {
 
   constructor(private readonly api: ApiClient, private readonly router: Router) {}
   select(index: number): void { this.selected.set(index); this.prompt = this.presets[index].prompt; }
-  continue(): void {
+  async continue(): Promise<void> {
     const request = this.prompt.trim();
     if (!request) return;
     this.busy.set(true); this.error.set('');
+    const clientContext = await this.clientContext();
     this.api.listAgents().pipe(
-      switchMap(({ agents }) => agents[0] ? this.api.createIntent(agents[0].id, request) : this.api.createAgent().pipe(switchMap(({ agent }) => this.api.createIntent(agent.id, request)))),
+      switchMap(({ agents }) => agents[0] ? this.api.createIntent(agents[0].id, request, clientContext) : this.api.createAgent().pipe(switchMap(({ agent }) => this.api.createIntent(agent.id, request, clientContext)))),
       finalize(() => this.busy.set(false)),
     ).subscribe({
       next: (result) => void this.router.navigate(['/agent'], {
@@ -36,5 +37,30 @@ export class IntentPage {
       }),
       error: (error: Error) => this.error.set(error.message),
     });
+  }
+
+  private async clientContext(): Promise<PurchaseClientContext> {
+    const base: PurchaseClientContext = {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      locale: navigator.language || 'en-US',
+      observedAt: new Date().toISOString(),
+    };
+    if (!navigator.geolocation) return base;
+    const position = await new Promise<GeolocationPosition | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {
+        enableHighAccuracy: false,
+        maximumAge: 300_000,
+        timeout: 1_500,
+      });
+    });
+    if (!position) return base;
+    return {
+      ...base,
+      location: {
+        latitude: Number(position.coords.latitude.toFixed(2)),
+        longitude: Number(position.coords.longitude.toFixed(2)),
+        accuracyMeters: Math.max(position.coords.accuracy, 1_500),
+      },
+    };
   }
 }

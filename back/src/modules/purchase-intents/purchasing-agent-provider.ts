@@ -1,4 +1,5 @@
 import type { Specifications } from './specifications.js';
+import type { PurchaseClientContext } from './purchase-intent-schemas.js';
 
 export interface ConversationMessage {
   role: 'USER' | 'AGENT';
@@ -12,8 +13,8 @@ export interface ClarificationResult {
 }
 
 export interface PurchasingAgentProvider {
-  analyze(messages: ConversationMessage[]): Promise<ClarificationResult>;
-  buildSpecifications(messages: ConversationMessage[]): Promise<unknown>;
+  analyze(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<ClarificationResult>;
+  buildSpecifications(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<unknown>;
 }
 
 interface ExtractedFlightIntent {

@@ -81,6 +81,7 @@ export const purchaseIntents = pgTable('purchase_intents', {
   agentId: uuid('agent_id').notNull().references(() => agents.id),
   status: intentStatus('status').notNull().default('DRAFT'),
   originalRequest: text('original_request').notNull(),
+  clientContext: jsonb('client_context'),
   searchSpecification: jsonb('search_specification'),
   authorizationSpecification: jsonb('authorization_specification'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

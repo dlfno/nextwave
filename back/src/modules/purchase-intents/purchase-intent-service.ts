@@ -4,7 +4,7 @@ import type { DatabaseClient } from '../../database/client.js';
 import { AuditService } from '../audit/audit-service.js';
 import { agents, intentMessages, purchaseIntents } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
-import type { CreatePurchaseIntentInput } from './purchase-intent-schemas.js';
+import { purchaseClientContextSchema, type CreatePurchaseIntentInput, type PurchaseClientContext } from './purchase-intent-schemas.js';
 import type { ConversationMessage, PurchasingAgentProvider } from './purchasing-agent-provider.js';
 import { specificationsSchema } from './specifications.js';
 
@@ -28,7 +28,7 @@ export class PurchaseIntentService {
     if (!ownedAgent) throw new HttpError(404, 'AGENT_NOT_FOUND', 'Agent not found');
 
     const initialMessage: ConversationMessage = { role: 'USER', content: input.originalRequest };
-    const clarification = await this.agentProvider.analyze([initialMessage]);
+    const clarification = await this.agentProvider.analyze([initialMessage], input.clientContext);
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
     const result = await this.database.db.transaction(async (transaction) => {
@@ -38,6 +38,7 @@ export class PurchaseIntentService {
           userId,
           agentId: input.agentId,
           originalRequest: input.originalRequest,
+          clientContext: input.clientContext,
           status,
         })
         .returning();
@@ -99,7 +100,8 @@ export class PurchaseIntentService {
 
     const priorMessages = await this.providerMessages(intentId);
     const userMessage: ConversationMessage = { role: 'USER', content };
-    const clarification = await this.agentProvider.analyze([...priorMessages, userMessage]);
+    const context = this.context(intent.clientContext);
+    const clarification = await this.agentProvider.analyze([...priorMessages, userMessage], context);
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
     const result = await this.database.db.transaction(async (transaction) => {
@@ -140,7 +142,8 @@ export class PurchaseIntentService {
     }
 
     const messages = await this.providerMessages(intentId);
-    const clarification = await this.agentProvider.analyze(messages);
+    const context = this.context(intent.clientContext);
+    const clarification = await this.agentProvider.analyze(messages, context);
     if (!clarification.ready) {
       throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'More information is required', {
         missingFields: clarification.missingFields,
@@ -149,7 +152,7 @@ export class PurchaseIntentService {
 
     let specifications: ReturnType<typeof specificationsSchema.parse>;
     try {
-      specifications = specificationsSchema.parse(await this.agentProvider.buildSpecifications(messages));
+      specifications = specificationsSchema.parse(await this.agentProvider.buildSpecifications(messages, context));
     } catch {
       throw new HttpError(502, 'AGENT_OUTPUT_INVALID', 'The agent returned invalid specifications');
     }
@@ -192,5 +195,10 @@ export class PurchaseIntentService {
     return messages.filter(
       (message): message is ConversationMessage => message.role === 'USER' || message.role === 'AGENT',
     );
+  }
+
+  private context(value: unknown): PurchaseClientContext | undefined {
+    const parsed = purchaseClientContextSchema.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
   }
 }
