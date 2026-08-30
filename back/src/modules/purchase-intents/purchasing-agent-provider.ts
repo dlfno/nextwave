@@ -1,5 +1,5 @@
-import type { Specifications } from './specifications.js';
 import type { PurchaseClientContext } from './purchase-intent-schemas.js';
+import type { FlightIntentDraft } from './flight-intent-draft.js';
 
 export interface ConversationMessage {
   role: 'USER' | 'AGENT';
@@ -10,11 +10,11 @@ export interface ClarificationResult {
   ready: boolean;
   missingFields: string[];
   message: string;
+  draft?: FlightIntentDraft;
 }
 
 export interface PurchasingAgentProvider {
   analyze(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<ClarificationResult>;
-  buildSpecifications(messages: ConversationMessage[], context?: PurchaseClientContext): Promise<unknown>;
 }
 
 interface ExtractedFlightIntent {
@@ -101,11 +101,31 @@ function missingFields(intent: ExtractedFlightIntent): string[] {
 
 export class MockPurchasingAgentProvider implements PurchasingAgentProvider {
   async analyze(messages: ConversationMessage[]): Promise<ClarificationResult> {
-    const missing = missingFields(extract(messages));
+    const intent = extract(messages);
+    const missing = missingFields(intent);
+    const source = messages.reduce((latest, message, index) => message.role === 'USER' ? index : latest, 0);
+    const draft: FlightIntentDraft = {
+      origin: intent.origin ?? null,
+      destination: intent.destination ?? null,
+      departureDate: intent.departureDate ?? null,
+      passengers: intent.passengers ?? null,
+      maxTotalMinor: intent.maxTotalMinor ?? null,
+      currency: intent.currency ?? null,
+      validUntil: intent.validUntil ?? null,
+      requiresFinalConfirmation: intent.requiresFinalConfirmation ?? null,
+      sources: {
+        origin: intent.origin ? source : null, destination: intent.destination ? source : null,
+        departureDate: intent.departureDate ? source : null, passengers: intent.passengers ? source : null,
+        maxTotalMinor: intent.maxTotalMinor ? source : null, currency: intent.currency ? source : null,
+        validUntil: intent.validUntil ? source : null,
+        requiresFinalConfirmation: intent.requiresFinalConfirmation !== undefined ? source : null,
+      },
+    };
     if (missing.length === 0) {
       return {
         ready: true,
         missingFields: [],
+        draft,
         message: 'I have enough information to prepare separate search and authorization specifications.',
       };
     }
@@ -113,45 +133,9 @@ export class MockPurchasingAgentProvider implements PurchasingAgentProvider {
     return {
       ready: false,
       missingFields: missing,
+      draft,
       message: missing.map((field) => FIELD_QUESTIONS[field]).join(' '),
     };
   }
 
-  async buildSpecifications(messages: ConversationMessage[]): Promise<Specifications> {
-    const intent = extract(messages);
-    const missing = missingFields(intent);
-    if (missing.length > 0) {
-      throw new Error(`Missing clarification fields: ${missing.join(', ')}`);
-    }
-
-    const origin = intent.origin!;
-    const destination = intent.destination!;
-    return {
-      searchSpecification: {
-        query: `${origin.city} to ${destination.city} flight`,
-        category: 'travel.flight',
-        origin,
-        destination,
-        departureDate: intent.departureDate!,
-        passengers: intent.passengers!,
-        currency: intent.currency!,
-        rankingPreferences: ['lowest_total_price', 'departure_time'],
-      },
-      authorizationSpecification: {
-        productConstraints: {
-          category: 'travel.flight',
-          originIata: origin.iata,
-          destinationIata: destination.iata,
-          quantity: intent.passengers!,
-        },
-        spendConstraints: {
-          maxTotalMinor: intent.maxTotalMinor!,
-          currency: intent.currency!,
-        },
-        merchantConstraints: { allowedMerchants: 'ANY' },
-        validUntil: intent.validUntil!,
-        requiresFinalConfirmation: intent.requiresFinalConfirmation!,
-      },
-    };
-  }
 }

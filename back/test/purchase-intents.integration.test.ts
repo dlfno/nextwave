@@ -135,10 +135,12 @@ describe.skipIf(!databaseUrl)('purchase intent conversation and specifications',
       passengers: 1,
     });
     expect(finalized.body.authorizationSpecification).toEqual({
+      intentDraftHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       productConstraints: {
         category: 'travel.flight',
         originIata: 'MEX',
         destinationIata: 'COR',
+        departureDate: '2026-09-15',
         quantity: 1,
       },
       spendConstraints: { maxTotalMinor: '15000', currency: 'USD' },
@@ -191,9 +193,6 @@ describe.skipIf(!databaseUrl)('purchase intent conversation and specifications',
       async analyze(_messages: ConversationMessage[]): Promise<ClarificationResult> {
         return { ready: true, missingFields: [], message: 'Ready.' };
       },
-      async buildSpecifications() {
-        return { searchSpecification: {}, authorizationSpecification: { approved: true } };
-      },
     };
     const invalidApp = createApp({
       config: testConfig,
@@ -202,17 +201,11 @@ describe.skipIf(!databaseUrl)('purchase intent conversation and specifications',
       agentProvider: invalidProvider,
     });
     const user = await createUser('invalid-provider@example.com', invalidApp);
-    const created = await user.client
+    await user.client
       .post('/api/v1/purchase-intents')
       .set('Origin', frontendOrigin)
       .set('X-CSRF-Token', user.csrfToken)
       .send({ agentId: user.agentId, originalRequest: 'A complete request according to the provider.' })
-      .expect(201);
-
-    await user.client
-      .post(`/api/v1/purchase-intents/${created.body.intent.id}/finalize-specifications`)
-      .set('Origin', frontendOrigin)
-      .set('X-CSRF-Token', user.csrfToken)
       .expect(502)
       .expect(({ body }) => expect(body.error.code).toBe('AGENT_OUTPUT_INVALID'));
   });

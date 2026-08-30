@@ -1,5 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { PoolClient } from 'pg';
+import { canonicalize } from 'json-canonicalize';
 
 import type { DatabaseClient } from '../../database/client.js';
 import { AuditService } from '../audit/audit-service.js';
@@ -12,6 +13,7 @@ import {
 } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
 import { authorizationSpecificationSchema, type AuthorizationSpecification } from '../purchase-intents/specifications.js';
+import { compileSpecifications, flightIntentDraftSchema, hashIntentDraft } from '../purchase-intents/flight-intent-draft.js';
 import type { MandateSigner } from './mandate-signer.js';
 
 interface AuthorizeRow {
@@ -66,6 +68,14 @@ export class MandateService {
       throw new HttpError(409, 'SPECIFICATIONS_NOT_FINALIZED', 'Authorization specification is not finalized');
     }
     const specification = parsed.data;
+    const draft = flightIntentDraftSchema.safeParse(intent.intentDraft);
+    if (!draft.success || hashIntentDraft(draft.data) !== specification.intentDraftHash) {
+      throw new HttpError(409, 'INTENT_MANDATE_MISMATCH', 'Mandate does not match the reviewed intent draft');
+    }
+    const compiled = compileSpecifications(draft.data).authorizationSpecification;
+    if (canonicalize(compiled) !== canonicalize(specification)) {
+      throw new HttpError(409, 'INTENT_MANDATE_MISMATCH', 'Mandate constraints differ from the reviewed intent');
+    }
     const validUntil = assertFutureValidity(specification);
 
     try {
@@ -106,6 +116,9 @@ export class MandateService {
           mandateVersionId: version.id,
           matchType: 'CATEGORY',
           categoryPrefix: specification.productConstraints.category,
+          originIata: specification.productConstraints.originIata,
+          destinationIata: specification.productConstraints.destinationIata,
+          departureDate: specification.productConstraints.departureDate,
           maxQuantity: specification.productConstraints.quantity,
         });
         return { mandate, version };
@@ -161,9 +174,11 @@ export class MandateService {
       );
       await client.query(
         `INSERT INTO mandate_product_constraints (
-          mandate_version_id, match_type, category_prefix, max_quantity
-        ) VALUES ($1, 'CATEGORY', $2, $3)`,
-        [inserted.rows[0]!.id, specification.productConstraints.category, specification.productConstraints.quantity],
+          mandate_version_id, match_type, category_prefix, origin_iata, destination_iata, departure_date, max_quantity
+        ) VALUES ($1, 'CATEGORY', $2, $3, $4, $5, $6)`,
+        [inserted.rows[0]!.id, specification.productConstraints.category,
+          specification.productConstraints.originIata, specification.productConstraints.destinationIata,
+          specification.productConstraints.departureDate, specification.productConstraints.quantity],
       );
       await client.query('COMMIT');
       const detail = await this.get(userId, mandateId);

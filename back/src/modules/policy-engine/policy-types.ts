@@ -20,6 +20,9 @@ export interface MandateConstraints {
   readonly allowedProductIds?: readonly string[];
   readonly allowedProductNames?: readonly string[];
   readonly maxQuantity: number;
+  readonly originIata?: string;
+  readonly destinationIata?: string;
+  readonly departureDate?: string;
   readonly maxUses?: number;
   readonly budgetMinor?: bigint;
   readonly requiresFinalConfirmation: boolean;
@@ -41,6 +44,9 @@ export interface CheckoutLineItem {
   readonly productId?: string;
   readonly productName: string;
   readonly category: string;
+  readonly originIata?: string;
+  readonly destinationIata?: string;
+  readonly departureDate?: string;
   readonly quantity: number;
   readonly unitPriceMinor: bigint;
   readonly totalMinor: bigint;

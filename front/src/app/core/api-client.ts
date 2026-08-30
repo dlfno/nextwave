@@ -11,7 +11,8 @@ export interface PurchaseClientContext {
 export interface IntentMessage { id?: string; role: 'USER' | 'AGENT'; content: string; }
 export interface PurchaseIntentResult { intent: { id: string; status: string }; messages: IntentMessage[]; }
 export interface AuthorizationSpecification {
-  productConstraints: { category: 'travel.flight'; originIata: string; destinationIata: string; quantity: number };
+  intentDraftHash: string;
+  productConstraints: { category: 'travel.flight'; originIata: string; destinationIata: string; departureDate: string; quantity: number };
   spendConstraints: { maxTotalMinor: string; currency: string };
   merchantConstraints: { allowedMerchants: 'ANY' };
   validUntil: string;

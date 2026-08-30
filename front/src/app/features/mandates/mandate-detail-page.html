@@ -3,17 +3,17 @@
   @if (loading()) { <div class="loading-state"><i></i><span>Retrieving signed authority</span></div> }
   @if (detail(); as data) {
     <section class="detail-page">
-      <header class="detail-head"><div><a routerLink="/mandates">← All mandates</a><p class="eyebrow">Purchase mandate</p><h1>Mexico City <span>to</span> Córdoba</h1></div><div class="head-status" [class.revoked]="data.mandate.status === 'REVOKED'"><small>Current status</small><strong>{{ data.mandate.status }}</strong><span>Version {{ currentVersion()?.version }}</span></div></header>
+      <header class="detail-head"><div><a routerLink="/mandates">← All mandates</a><p class="eyebrow">Purchase mandate</p><h1>{{ airportName(currentSpecification()?.productConstraints?.originIata) }} <span>to</span> {{ airportName(currentSpecification()?.productConstraints?.destinationIata) }}</h1></div><div class="head-status" [class.revoked]="data.mandate.status === 'REVOKED'"><small>Current status</small><strong>{{ data.mandate.status }}</strong><span>Version {{ currentVersion()?.version }}</span></div></header>
       @if (demo()) { <div class="notice demo"><strong>Demo presentation</strong><span>Actions below are simulated locally. Sign in to create cryptographically signed mandates.</span></div> }
       @if (success()) { <div class="notice success" role="status"><strong>State updated</strong><span>{{ success() }}</span></div> }
       @if (error()) { <div class="notice error" role="alert"><strong>Action failed</strong><span>{{ error() }}</span></div> }
       <div class="mandate-layout">
         <section class="document">
           <div class="document-top"><div class="seal"><span>NW</span><i></i></div><div><p>Delegated purchasing authority</p><strong>{{ data.mandate.mode === 'AUTONOMOUS' ? 'Human not present' : 'Human present' }}</strong></div><code>{{ data.mandate.id.slice(0, 13) }}</code></div>
-          <div class="route-summary"><div><span>From</span><strong>MEX</strong><small>Mexico City</small></div><i><b>✦</b></i><div><span>To</span><strong>COR</strong><small>Córdoba, Argentina</small></div></div>
+          <div class="route-summary"><div><span>From</span><strong>{{ currentSpecification()?.productConstraints?.originIata }}</strong><small>{{ airportName(currentSpecification()?.productConstraints?.originIata) }}</small></div><i><b>✦</b></i><div><span>To</span><strong>{{ currentSpecification()?.productConstraints?.destinationIata }}</strong><small>{{ airportName(currentSpecification()?.productConstraints?.destinationIata) }}</small></div></div>
           <div class="terms">
             <div><span>Maximum total</span><strong>{{ money(currentVersion()!.maxTotalMinor) | number:'1.2-2' }} {{ currentVersion()?.currency }}</strong><small>Taxes and fees included</small></div>
-            <div><span>Quantity</span><strong>1 traveler</strong><small>Single permitted use</small></div>
+            <div><span>Quantity</span><strong>{{ currentSpecification()?.productConstraints?.quantity }} traveler{{ currentSpecification()?.productConstraints?.quantity === 1 ? '' : 's' }}</strong><small>Departure {{ currentSpecification()?.productConstraints?.departureDate | date:'MMM d, y':'UTC' }}</small></div>
             <div><span>Merchants</span><strong>Any verified merchant</strong><small>Authoritative checkout required</small></div>
             <div><span>Valid until</span><strong>{{ currentVersion()?.validUntil | date:'MMM d, y' }}</strong><small>Expires automatically</small></div>
           </div>

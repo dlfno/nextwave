@@ -14,6 +14,9 @@ export interface CheckoutLineItem {
   readonly productId: string | null;
   readonly productName: string;
   readonly category: string;
+  readonly originIata?: string;
+  readonly destinationIata?: string;
+  readonly departureDate?: string;
   readonly quantity: number;
   readonly unitPriceMinor: bigint;
   readonly totalMinor: bigint;

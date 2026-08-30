@@ -16,6 +16,7 @@ const PRODUCT_PRICES: Readonly<Record<string, bigint>> = {
   'VY-MEX-COR-130': 13_000n,
   'VY-MEX-COR-300': 30_000n,
 };
+const PRODUCT_TRAVEL = { originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' } as const;
 
 export class MockVuelaYaCommerceProvider implements CommerceProvider {
   readonly id = 'mock-vuelaya-commerce';
@@ -41,6 +42,7 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       productId: offer.productId,
       productName: offer.productName,
       category: offer.category,
+      ...PRODUCT_TRAVEL,
       quantity: 1,
       unitPriceMinor: livePrice,
       totalMinor: livePrice,

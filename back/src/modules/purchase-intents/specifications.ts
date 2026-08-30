@@ -16,10 +16,12 @@ export const searchSpecificationSchema = z.object({
 }).strict();
 
 export const authorizationSpecificationSchema = z.object({
+  intentDraftHash: z.string().regex(/^[a-f0-9]{64}$/),
   productConstraints: z.object({
     category: z.literal('travel.flight'),
     originIata: iataCode,
     destinationIata: iataCode,
+    departureDate: z.iso.date(),
     quantity: z.number().int().positive().max(9),
   }).strict(),
   spendConstraints: z.object({

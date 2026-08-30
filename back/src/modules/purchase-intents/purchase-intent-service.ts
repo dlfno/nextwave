@@ -6,7 +6,7 @@ import { agents, intentMessages, purchaseIntents } from '../../database/schema.j
 import { HttpError } from '../../shared/http-error.js';
 import { purchaseClientContextSchema, type CreatePurchaseIntentInput, type PurchaseClientContext } from './purchase-intent-schemas.js';
 import type { ConversationMessage, PurchasingAgentProvider } from './purchasing-agent-provider.js';
-import { specificationsSchema } from './specifications.js';
+import { compileSpecifications, flightIntentDraftSchema, hashIntentDraft, missingDraftFields } from './flight-intent-draft.js';
 
 export class PurchaseIntentService {
   private readonly audit: AuditService;
@@ -29,6 +29,7 @@ export class PurchaseIntentService {
 
     const initialMessage: ConversationMessage = { role: 'USER', content: input.originalRequest };
     const clarification = await this.agentProvider.analyze([initialMessage], input.clientContext);
+    if (!clarification.draft) throw new HttpError(502, 'AGENT_OUTPUT_INVALID', 'The agent returned no canonical intent draft');
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
     const result = await this.database.db.transaction(async (transaction) => {
@@ -39,6 +40,8 @@ export class PurchaseIntentService {
           agentId: input.agentId,
           originalRequest: input.originalRequest,
           clientContext: input.clientContext,
+          intentDraft: clarification.draft,
+          intentDraftHash: clarification.draft ? hashIntentDraft(clarification.draft) : null,
           status,
         })
         .returning();
@@ -47,12 +50,13 @@ export class PurchaseIntentService {
       const [userMessage, agentMessage] = await transaction
         .insert(intentMessages)
         .values([
-          { intentId: intent.id, role: 'USER', content: input.originalRequest },
+          { intentId: intent.id, role: 'USER', content: input.originalRequest, sequence: 0 },
           {
             intentId: intent.id,
             role: 'AGENT',
             content: clarification.message,
             structuredPayload: { type: 'CLARIFICATION', missingFields: clarification.missingFields },
+            sequence: 1,
           },
         ])
         .returning();
@@ -88,7 +92,7 @@ export class PurchaseIntentService {
       .select()
       .from(intentMessages)
       .where(eq(intentMessages.intentId, intentId))
-      .orderBy(asc(intentMessages.createdAt), asc(intentMessages.id));
+      .orderBy(asc(intentMessages.sequence));
     return { intent, messages };
   }
 
@@ -102,22 +106,29 @@ export class PurchaseIntentService {
     const userMessage: ConversationMessage = { role: 'USER', content };
     const context = this.context(intent.clientContext);
     const clarification = await this.agentProvider.analyze([...priorMessages, userMessage], context);
+    if (!clarification.draft) throw new HttpError(502, 'AGENT_OUTPUT_INVALID', 'The agent returned no canonical intent draft');
     const status = clarification.ready ? 'READY_FOR_MANDATE' : 'CLARIFYING';
 
     const result = await this.database.db.transaction(async (transaction) => {
+      const nextSequence = priorMessages.length;
       const [storedUserMessage, storedAgentMessage] = await transaction
         .insert(intentMessages)
         .values([
-          { intentId, role: 'USER', content },
+          { intentId, role: 'USER', content, sequence: nextSequence },
           {
             intentId,
             role: 'AGENT',
             content: clarification.message,
             structuredPayload: { type: 'CLARIFICATION', missingFields: clarification.missingFields },
+            sequence: nextSequence + 1,
           },
         ])
         .returning();
-      await transaction.update(purchaseIntents).set({ status }).where(eq(purchaseIntents.id, intentId));
+      await transaction.update(purchaseIntents).set({
+        status,
+        intentDraft: clarification.draft,
+        intentDraftHash: clarification.draft ? hashIntentDraft(clarification.draft) : null,
+      }).where(eq(purchaseIntents.id, intentId));
 
       return {
         status,
@@ -141,20 +152,25 @@ export class PurchaseIntentService {
       };
     }
 
-    const messages = await this.providerMessages(intentId);
-    const context = this.context(intent.clientContext);
-    const clarification = await this.agentProvider.analyze(messages, context);
-    if (!clarification.ready) {
+    const draft = flightIntentDraftSchema.safeParse(intent.intentDraft);
+    if (!draft.success) {
       throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'More information is required', {
-        missingFields: clarification.missingFields,
+        missingFields: ['canonicalDraft'],
+      });
+    }
+    const missing = missingDraftFields(draft.data);
+    if (missing.length) {
+      throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'More information is required', {
+        missingFields: missing.map((field) => field === 'maxTotalMinor' ? 'maxTotal'
+          : field === 'requiresFinalConfirmation' ? 'finalConfirmation' : field),
       });
     }
 
-    let specifications: ReturnType<typeof specificationsSchema.parse>;
+    let specifications: ReturnType<typeof compileSpecifications>;
     try {
-      specifications = specificationsSchema.parse(await this.agentProvider.buildSpecifications(messages, context));
+      specifications = compileSpecifications(draft.data);
     } catch {
-      throw new HttpError(502, 'AGENT_OUTPUT_INVALID', 'The agent returned invalid specifications');
+      throw new HttpError(409, 'CLARIFICATION_REQUIRED', 'The reviewed intent draft is incomplete');
     }
 
     const [updated] = await this.database.db
@@ -190,7 +206,7 @@ export class PurchaseIntentService {
       .select({ role: intentMessages.role, content: intentMessages.content })
       .from(intentMessages)
       .where(eq(intentMessages.intentId, intentId))
-      .orderBy(asc(intentMessages.createdAt), asc(intentMessages.id));
+      .orderBy(asc(intentMessages.sequence));
 
     return messages.filter(
       (message): message is ConversationMessage => message.role === 'USER' || message.role === 'AGENT',

@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, date, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const citext = customType<{ data: string }>({
   dataType: () => 'citext',
@@ -82,6 +82,8 @@ export const purchaseIntents = pgTable('purchase_intents', {
   status: intentStatus('status').notNull().default('DRAFT'),
   originalRequest: text('original_request').notNull(),
   clientContext: jsonb('client_context'),
+  intentDraft: jsonb('intent_draft'),
+  intentDraftHash: text('intent_draft_hash'),
   searchSpecification: jsonb('search_specification'),
   authorizationSpecification: jsonb('authorization_specification'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -94,6 +96,7 @@ export const intentMessages = pgTable('intent_messages', {
   role: text('role').notNull().$type<'USER' | 'AGENT' | 'TOOL' | 'SYSTEM'>(),
   content: text('content').notNull(),
   structuredPayload: jsonb('structured_payload'),
+  sequence: integer('sequence').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -162,6 +165,9 @@ export const mandateProductConstraints = pgTable('mandate_product_constraints', 
   productId: uuid('product_id'),
   normalizedName: text('normalized_name'),
   categoryPrefix: text('category_prefix'),
+  originIata: text('origin_iata'),
+  destinationIata: text('destination_iata'),
+  departureDate: date('departure_date'),
   maxQuantity: integer('max_quantity').notNull().default(1),
 });
 
@@ -263,6 +269,9 @@ export const checkoutLineItems = pgTable('checkout_line_items', {
   productId: uuid('product_id').references(() => products.id),
   productName: text('product_name').notNull(),
   category: text('category').notNull(),
+  originIata: text('origin_iata'),
+  destinationIata: text('destination_iata'),
+  departureDate: date('departure_date'),
   quantity: integer('quantity').notNull(),
   unitPriceMinor: bigint('unit_price_minor', { mode: 'bigint' }).notNull(),
   totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),

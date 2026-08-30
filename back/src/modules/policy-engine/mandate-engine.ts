@@ -87,6 +87,12 @@ export class DeterministicMandateEngine implements MandateEngine {
     );
     const currencyAllowed = checkout.currency === constraints.currency
       && checkout.lineItems.every((item) => item.currency === constraints.currency);
+    const originAllowed = constraints.originIata === undefined
+      || checkout.lineItems.every((item) => item.originIata === constraints.originIata);
+    const destinationAllowed = constraints.destinationIata === undefined
+      || checkout.lineItems.every((item) => item.destinationIata === constraints.destinationIata);
+    const departureDateAllowed = constraints.departureDate === undefined
+      || checkout.lineItems.every((item) => item.departureDate === constraints.departureDate);
     const withinUsageLimit = constraints.maxUses === undefined
       || priorUsage.consumedUses + priorUsage.reservedUses + 1 <= constraints.maxUses;
     const withinBudget = constraints.budgetMinor === undefined
@@ -123,6 +129,9 @@ export class DeterministicMandateEngine implements MandateEngine {
         { merchantId: checkout.merchantId }),
       check('CATEGORY_ALLOWED', allowedCategories, POLICY_REASON_CODES.CATEGORY_NOT_ALLOWED),
       check('PRODUCT_ALLOWED', allowedProducts, POLICY_REASON_CODES.PRODUCT_NOT_ALLOWED),
+      check('ORIGIN_ALLOWED', originAllowed, POLICY_REASON_CODES.ORIGIN_NOT_ALLOWED),
+      check('DESTINATION_ALLOWED', destinationAllowed, POLICY_REASON_CODES.DESTINATION_NOT_ALLOWED),
+      check('DEPARTURE_DATE_ALLOWED', departureDateAllowed, POLICY_REASON_CODES.DEPARTURE_DATE_NOT_ALLOWED),
       check('QUANTITY_ALLOWED', totalQuantity <= constraints.maxQuantity,
         POLICY_REASON_CODES.QUANTITY_EXCEEDED,
         { quantity: totalQuantity, maxQuantity: constraints.maxQuantity }),
