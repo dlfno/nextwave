@@ -9,6 +9,10 @@ import type { AppConfig } from '../src/config.js';
 import { createDatabaseClient, type DatabaseClient } from '../src/database/client.js';
 import {
   checkoutSessions,
+  humanApprovals,
+  mandateEvaluations,
+  mandateProductConstraints,
+  mandateRevocations,
   mandates,
   mandateVersions,
   merchants,
@@ -19,6 +23,8 @@ import { Es256CheckoutSigner, type CheckoutSigner } from '../src/modules/commerc
 import type { CommerceProvider } from '../src/modules/commerce/commerce-types.js';
 import { MockVuelaYaCommerceProvider } from '../src/modules/commerce/mock-vuelaya-commerce-provider.js';
 import { VUELAYA_MERCHANT_ID } from '../src/modules/discovery/mock-vuelaya-provider.js';
+import { Es256MandateSigner, type MandateSigner } from '../src/modules/mandates/mandate-signer.js';
+import { approvalPayload } from '../src/modules/authorization/approval-evidence.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const frontendOrigin = 'http://localhost:4200';
@@ -42,11 +48,16 @@ function readCookie(response: Response, name: string): string {
 describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
   let database: DatabaseClient;
   let signer: CheckoutSigner;
+  let mandateSigner: MandateSigner;
 
   beforeAll(async () => {
     database = createDatabaseClient(databaseUrl!);
     const { privateKey } = await generateKeyPair('ES256', { extractable: true });
     signer = await Es256CheckoutSigner.create(await exportJWK(privateKey), 'vuela-ya-test-key');
+    const mandateKeys = await generateKeyPair('ES256', { extractable: true });
+    mandateSigner = await Es256MandateSigner.create(
+      await exportJWK(mandateKeys.privateKey), 'trusted-surface-test-key',
+    );
   });
 
   beforeEach(async () => {
@@ -66,6 +77,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       database,
       logger: pino({ level: 'silent' }),
       commerceProviders: [provider],
+      mandateSigner,
     });
     const client = request.agent(app);
     const registration = await client.post('/api/v1/auth/register').set('Origin', frontendOrigin)
@@ -100,6 +112,7 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       mode: 'AUTONOMOUS',
       expiresAt: new Date('2030-12-31T23:59:59Z'),
     }).returning();
+    const mandateEvidence = await mandateSigner.sign({});
     const [version] = await database.db.insert(mandateVersions).values({
       mandateId: mandate!.id,
       version: 1,
@@ -108,17 +121,30 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       currency: 'USD',
       validFrom: new Date('2026-01-01T00:00:00Z'),
       validUntil: new Date('2030-12-31T23:59:59Z'),
+      requiresFinalConfirmation: true,
       canonicalPayload: {},
-      payloadHash: Buffer.from('signed'),
-      signedPayload: 'test-mandate-signature',
-      signatureAlgorithm: 'ES256',
-      signingKeyId: 'test-key',
+      payloadHash: mandateEvidence.payloadHash,
+      signedPayload: mandateEvidence.signedPayload,
+      signatureAlgorithm: mandateEvidence.signatureAlgorithm,
+      signingKeyId: mandateEvidence.signingKeyId,
       signedAt: new Date(),
       allowedMerchantsAny: true,
     }).returning();
     await database.db.update(mandates).set({ currentVersionId: version!.id })
       .where(eq(mandates.id, mandate!.id));
-    return { client, csrfToken, intentId, offerId: discovery.body.offers[0].id as string };
+    await database.db.insert(mandateProductConstraints).values({
+      mandateVersionId: version!.id,
+      matchType: 'CATEGORY',
+      categoryPrefix: 'travel.flight',
+      maxQuantity: 1,
+    });
+    return {
+      client, csrfToken, intentId,
+      userId: registration.body.user.id as string,
+      mandateId: mandate!.id,
+      offerId: discovery.body.offers[0].id as string,
+      expensiveOfferId: discovery.body.offers[1].id as string,
+    };
   }
 
   it('creates and retrieves a valid authoritative signed checkout', async () => {
@@ -235,5 +261,155 @@ describe.skipIf(!databaseUrl)('authoritative checkout API', () => {
       .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
       .send({ offerId: user.offerId }).expect(409)
       .expect(({ body }) => expect(body.error.code).toBe('CHECKOUT_REPLAYED'));
+  });
+
+  it('pauses for checkout-bound approval and allows only after approval', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'approval@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.offerId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/evaluate`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200)
+      .expect(({ body }) => expect(body.decision).toMatchObject({
+        decision: 'REQUIRE_HUMAN_APPROVAL', reasonCode: 'HUMAN_APPROVAL_REQUIRED',
+      }));
+    const approved = await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+    expect(approved.body.decision).toMatchObject({
+      decision: 'ALLOW', reasonCode: 'ALL_CONSTRAINTS_SATISFIED',
+    });
+    expect(approved.body.approval.checkoutHash).toBe(attempt.body.checkout.checkoutHash);
+
+    const evaluations = await database.db.select().from(mandateEvaluations)
+      .where(eq(mandateEvaluations.attemptId, attemptId));
+    const approvals = await database.db.select().from(humanApprovals)
+      .where(eq(humanApprovals.attemptId, attemptId));
+    expect(evaluations.map((entry) => entry.decision)).toEqual([
+      'REQUIRE_HUMAN_APPROVAL', 'REQUIRE_HUMAN_APPROVAL', 'ALLOW',
+    ]);
+    expect(approvals).toHaveLength(1);
+  });
+
+  it('does not let approval override an over-limit checkout', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'over-limit@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.expensiveOfferId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/evaluate`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200)
+      .expect(({ body }) => expect(body.decision).toMatchObject({
+        decision: 'DENY', reasonCode: 'AMOUNT_EXCEEDS_MANDATE',
+      }));
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(409)
+      .expect(({ body }) => expect(body.error.code).toBe('AMOUNT_EXCEEDS_MANDATE'));
+  });
+
+  it('denies immediately when the mandate is revoked after approval', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'revoked-after-approval@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.offerId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+
+    await database.db.insert(mandateRevocations).values({
+      mandateId: user.mandateId,
+      revokedByUserId: user.userId,
+      reason: 'Trial by fire',
+    });
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/evaluate`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200)
+      .expect(({ body }) => expect(body.decision).toMatchObject({
+        decision: 'DENY', reasonCode: 'MANDATE_REVOKED',
+      }));
+  });
+
+  it('rejects signed approval evidence after it expires', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'expired-approval@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.offerId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+    const [approval] = await database.db.select().from(humanApprovals)
+      .where(eq(humanApprovals.attemptId, attemptId));
+    const decidedAt = new Date(Date.now() - 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() - 5 * 60 * 1000);
+    const evidence = await mandateSigner.sign(approvalPayload({
+      approvalId: approval!.id,
+      attemptId,
+      userId: user.userId,
+      mandateVersionId: approval!.mandateVersionId,
+      checkoutId: approval!.checkoutId,
+      checkoutHash: approval!.checkoutHash.toString('base64url'),
+      decision: 'APPROVED',
+      decidedAt,
+      expiresAt,
+    }));
+    await database.db.update(humanApprovals).set({
+      decidedAt, expiresAt, signedEvidence: evidence.signedPayload,
+    }).where(eq(humanApprovals.id, approval!.id));
+
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/evaluate`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200)
+      .expect(({ body }) => expect(body.decision).toMatchObject({
+        decision: 'DENY', reasonCode: 'HUMAN_APPROVAL_EXPIRED',
+      }));
+  });
+
+  it('rejects signed approval evidence for a different mandate version', async () => {
+    const user = await prepare(new MockVuelaYaCommerceProvider(signer), 'mismatched-approval@example.com');
+    const attempt = await user.client.post(`/api/v1/purchase-intents/${user.intentId}/select-offer`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ offerId: user.offerId }).expect(201);
+    const attemptId = attempt.body.attempt.id as string;
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/approval`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken)
+      .send({ decision: 'APPROVED' }).expect(201);
+    const [otherVersion] = await database.db.insert(mandateVersions).values({
+      mandateId: user.mandateId,
+      version: 2,
+      status: 'DRAFT',
+      maxTotalMinor: 15_000n,
+      currency: 'USD',
+      validFrom: new Date('2026-01-01T00:00:00Z'),
+      validUntil: new Date('2030-12-31T23:59:59Z'),
+      canonicalPayload: {},
+      allowedMerchantsAny: true,
+    }).returning();
+    const [approval] = await database.db.select().from(humanApprovals)
+      .where(eq(humanApprovals.attemptId, attemptId));
+    const evidence = await mandateSigner.sign(approvalPayload({
+      approvalId: approval!.id,
+      attemptId,
+      userId: user.userId,
+      mandateVersionId: otherVersion!.id,
+      checkoutId: approval!.checkoutId,
+      checkoutHash: approval!.checkoutHash.toString('base64url'),
+      decision: 'APPROVED',
+      decidedAt: approval!.decidedAt,
+      expiresAt: approval!.expiresAt,
+    }));
+    await database.db.update(humanApprovals).set({
+      mandateVersionId: otherVersion!.id,
+      signedEvidence: evidence.signedPayload,
+    }).where(eq(humanApprovals.id, approval!.id));
+
+    await user.client.post(`/api/v1/purchase-attempts/${attemptId}/evaluate`)
+      .set('Origin', frontendOrigin).set('X-CSRF-Token', user.csrfToken).expect(200)
+      .expect(({ body }) => expect(body.decision).toMatchObject({
+        decision: 'DENY', reasonCode: 'HUMAN_APPROVAL_MISMATCH',
+      }));
   });
 });

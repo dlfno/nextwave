@@ -11,6 +11,7 @@ import type { DatabaseClient } from './database/client.js';
 import { errorHandler, notFoundHandler } from './http/error-handler.js';
 import { requireAllowedOrigin } from './http/origin.js';
 import { createAgentRouter } from './modules/agents/agent-router.js';
+import { createAuthorizationRouter } from './modules/authorization/index.js';
 import { createAuthRouter } from './modules/auth/auth-router.js';
 import { createCheckoutRouter, type CommerceProvider, UnavailableCommerceProvider } from './modules/commerce/index.js';
 import { createDiscoveryRouter, DiscoveryEngine, MockVuelaYaDiscoveryProvider } from './modules/discovery/index.js';
@@ -59,6 +60,7 @@ export function createApp({
   app.use('/api/v1', createMandateRouter(database, mandateSigner));
   app.use('/api/v1', createDiscoveryRouter(database, discoveryEngine));
   app.use('/api/v1', createCheckoutRouter(database, commerceProviders));
+  app.use('/api/v1', createAuthorizationRouter(database, mandateSigner, commerceProviders));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

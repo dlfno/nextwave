@@ -117,6 +117,20 @@ evidence is ES256-signed with a merchant-specific key and bound to the exact
 attempt, quote, offer, mandate version, merchant, amount, currency, and expiry.
 Configure `VUELAYA_SIGNING_PRIVATE_JWK` separately from the mandate key.
 
+## Policy evaluation and human approval
+
+Milestone 7 exposes:
+
+- `POST /api/v1/purchase-attempts/:attemptId/evaluate`
+- `POST /api/v1/purchase-attempts/:attemptId/approval`
+
+Evaluation reloads current revocation, usage, mandate signature, merchant checkout
+signature, checkout binding, and approval evidence before invoking the pure policy
+engine. Results and their input hash are persisted. The approval command accepts
+`APPROVED` or `DENIED`, requires recent authentication, and signs evidence bound
+to the exact checkout hash and mandate version. It then runs a fresh evaluation;
+approval never overrides a hard failure or a later mandate revocation.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:

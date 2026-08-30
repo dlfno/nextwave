@@ -33,6 +33,9 @@ export const purchaseAttemptStatus = pgEnum('purchase_attempt_status', [
   'CREATED', 'QUOTED', 'DENIED', 'APPROVAL_REQUIRED', 'APPROVED', 'AUTHORIZED',
   'CREDENTIAL_ISSUED', 'PAYMENT_SUBMITTED', 'SUCCEEDED', 'FAILED', 'CANCELLED',
 ]);
+export const mandateDecision = pgEnum('mandate_decision', ['ALLOW', 'DENY', 'REQUIRE_HUMAN_APPROVAL']);
+export const approvalDecision = pgEnum('approval_decision', ['APPROVED', 'DENIED']);
+export const usageReservationStatus = pgEnum('usage_reservation_status', ['RESERVED', 'CONSUMED', 'RELEASED', 'EXPIRED']);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -163,6 +166,11 @@ export const mandateRevocations = pgTable('mandate_revocations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const mandateMerchantAllowlist = pgTable('mandate_merchant_allowlist', {
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id, { onDelete: 'cascade' }),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+});
+
 export const discoveryRuns = pgTable('discovery_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
   intentId: uuid('intent_id').notNull().references(() => purchaseIntents.id, { onDelete: 'cascade' }),
@@ -251,4 +259,41 @@ export const checkoutLineItems = pgTable('checkout_line_items', {
   unitPriceMinor: bigint('unit_price_minor', { mode: 'bigint' }).notNull(),
   totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
   currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+});
+
+export const mandateUsageReservations = pgTable('mandate_usage_reservations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id),
+  attemptId: uuid('attempt_id').notNull().unique().references(() => purchaseAttempts.id),
+  amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+  status: usageReservationStatus('status').notNull().default('RESERVED'),
+  reservedAt: timestamp('reserved_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+});
+
+export const mandateEvaluations = pgTable('mandate_evaluations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attemptId: uuid('attempt_id').notNull().references(() => purchaseAttempts.id, { onDelete: 'cascade' }),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id),
+  checkoutId: uuid('checkout_id').notNull().references(() => checkoutSessions.id),
+  decision: mandateDecision('decision').notNull(),
+  reasonCode: text('reason_code').notNull(),
+  checks: jsonb('checks').notNull(),
+  inputHash: bytea('input_hash').notNull(),
+  evaluatedAt: timestamp('evaluated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const humanApprovals = pgTable('human_approvals', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attemptId: uuid('attempt_id').notNull().references(() => purchaseAttempts.id),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id),
+  checkoutId: uuid('checkout_id').notNull().references(() => checkoutSessions.id),
+  checkoutHash: bytea('checkout_hash').notNull(),
+  decision: approvalDecision('decision').notNull(),
+  signedEvidence: text('signed_evidence').notNull(),
+  decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 });
