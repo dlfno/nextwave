@@ -74,6 +74,7 @@ services:
       dockerfile: front/Dockerfile
     environment:
       API_BASE_URL: http://api:3000
+      NG_ALLOWED_HOSTS: localhost,127.0.0.1
       PORT: 4000
     ports:
       - "4000:4000"

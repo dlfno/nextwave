@@ -97,3 +97,7 @@ If a rehearsal fails:
    `docker compose -f compose.demo.yaml up -d --build`.
 
 Do not use `docker compose down -v` during judging; it removes the database volume.
+
+For a deployment on a hostname other than localhost, set `NG_ALLOWED_HOSTS` to a
+comma-separated hostname allowlist for Angular SSR. Do not use a wildcard; the
+allowlist is part of the SSR request-forgery boundary.
