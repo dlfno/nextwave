@@ -109,6 +109,16 @@ describe('DiscoveryEngine', () => {
     expect(offers).toEqual([]);
   });
 
+  it('binds demo offers to the requested future departure date', async () => {
+    const engine = new DiscoveryEngine([new MockVuelaYaDiscoveryProvider()]);
+
+    const offers = await engine.discover({ ...specification, departureDate: '2026-10-04' }, context);
+
+    expect(offers).toHaveLength(2);
+    expect(offers.every((offer) => offer.attributes.departureDate === '2026-10-04')).toBe(true);
+    expect(offers.every((offer) => offer.departureTime?.startsWith('2026-10-04'))).toBe(true);
+  });
+
   it('filters unavailable and wrong-currency provider results', async () => {
     const base = (availability: DiscoveredOffer['availability'], currency: string): DiscoveredOffer => ({
       providerId: 'test-provider',

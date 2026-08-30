@@ -3,6 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 const password = process.env.DEMO_ACCOUNT_PASSWORD ?? 'nextwave-demo-2026';
 const enabled = process.env.PERSISTED_DEMO === 'true';
 
+function futureDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromNow);
+  return date.toISOString().slice(0, 10);
+}
+
 async function login(page: Page, email: string): Promise<void> {
   await page.goto('/auth');
   await page.getByLabel('Email address').fill(email);
@@ -17,8 +23,10 @@ test.describe('persisted judge rehearsal', () => {
   test('persists purchase evidence and exposes role-scoped verification', async ({ browser, page }) => {
     test.setTimeout(60_000);
     await login(page, 'marta@nextwave.demo');
+    const departureDate = futureDate(10);
+    const validUntilDate = futureDate(7);
     await page.getByLabel('Purchase intention').fill(
-      'Depart from Mexico City MEX to Córdoba, Argentina COR, departing 2026-09-15, one passenger, maximum $150 USD, valid until 2026-09-05. Require final confirmation.',
+      `Depart from Mexico City MEX to Córdoba, Argentina COR, departing ${departureDate}, one passenger, maximum $150 USD, valid until ${validUntilDate}. Require final confirmation.`,
     );
     await page.getByRole('button', { name: 'Start conversation' }).click();
     await expect(page).toHaveURL(/\/agent\?intentId=[0-9a-f-]+$/);

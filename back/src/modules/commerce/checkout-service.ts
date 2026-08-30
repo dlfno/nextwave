@@ -1,10 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from "node:crypto";
 
-import { and, asc, eq } from 'drizzle-orm';
-import { canonicalize } from 'json-canonicalize';
+import { and, asc, eq } from "drizzle-orm";
+import { canonicalize } from "json-canonicalize";
 
-import type { DatabaseClient } from '../../database/client.js';
-import { AuditService } from '../audit/audit-service.js';
+import type { DatabaseClient } from "../../database/client.js";
+import { AuditService } from "../audit/audit-service.js";
 import {
   checkoutLineItems,
   checkoutSessions,
@@ -15,24 +15,33 @@ import {
   purchaseAttempts,
   purchaseIntents,
   quotes,
-} from '../../database/schema.js';
-import { HttpError } from '../../shared/http-error.js';
-import type { AuthoritativeQuote, CommerceProvider, SignedCheckout } from './commerce-types.js';
-import { checkoutPayloadBound } from './checkout-binding.js';
+} from "../../database/schema.js";
+import { HttpError } from "../../shared/http-error.js";
+import type {
+  AuthoritativeQuote,
+  CommerceProvider,
+  SignedCheckout,
+} from "./commerce-types.js";
+import { checkoutPayloadBound } from "./checkout-binding.js";
 
 function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  if ('code' in error && error.code === '23505') return true;
-  return 'cause' in error && isUniqueViolation(error.cause);
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && error.code === "23505") return true;
+  return "cause" in error && isUniqueViolation(error.cause);
 }
 
 export class CheckoutService {
   private readonly providers: ReadonlyMap<string, CommerceProvider>;
   private readonly audit: AuditService;
 
-  constructor(database: DatabaseClient, providers: readonly CommerceProvider[]) {
+  constructor(
+    database: DatabaseClient,
+    providers: readonly CommerceProvider[],
+  ) {
     this.database = database;
-    this.providers = new Map(providers.map((provider) => [provider.merchantId, provider]));
+    this.providers = new Map(
+      providers.map((provider) => [provider.merchantId, provider]),
+    );
     this.audit = new AuditService(database);
   }
 
@@ -41,21 +50,30 @@ export class CheckoutService {
   async createAttempt(userId: string, intentId: string, offerId: string) {
     const selection = await this.findOwnedSelection(userId, intentId, offerId);
     const provider = this.providers.get(selection.offer.merchantId);
-    if (!provider) throw new HttpError(503, 'COMMERCE_PROVIDER_UNAVAILABLE', 'Commerce provider is unavailable');
+    if (!provider)
+      throw new HttpError(
+        503,
+        "COMMERCE_PROVIDER_UNAVAILABLE",
+        "Commerce provider is unavailable",
+      );
     const currentTime = new Date();
     const quoteId = randomUUID();
     const attemptId = randomUUID();
     const checkoutId = randomUUID();
-    const quote = await provider.getLiveQuote({
-      offerId: selection.offer.id,
-      merchantId: selection.offer.merchantId,
-      merchantProductId: selection.offer.merchantProductId,
-      productId: selection.offer.productId,
-      productName: selection.offer.productName,
-      category: selection.offer.category,
-      discoveredUnitPriceMinor: selection.offer.unitPriceMinor,
-      currency: selection.offer.currency,
-    }, currentTime);
+    const quote = await provider.getLiveQuote(
+      {
+        offerId: selection.offer.id,
+        merchantId: selection.offer.merchantId,
+        merchantProductId: selection.offer.merchantProductId,
+        productId: selection.offer.productId,
+        productName: selection.offer.productName,
+        category: selection.offer.category,
+        discoveredUnitPriceMinor: selection.offer.unitPriceMinor,
+        currency: selection.offer.currency,
+        ...this.offerDepartureDate(selection.offer.rawPayload),
+      },
+      currentTime,
+    );
     this.assertQuote(quote, selection.offer, currentTime);
     const checkout = await provider.createCheckout({
       attemptId,
@@ -65,10 +83,19 @@ export class CheckoutService {
       quote,
       currentTime,
     });
-    await this.assertCheckout(provider, checkout, {
-      attemptId, quoteId, offerId, mandateId: selection.mandate.id,
-      mandateVersionId: selection.version.id, quote,
-    }, currentTime);
+    await this.assertCheckout(
+      provider,
+      checkout,
+      {
+        attemptId,
+        quoteId,
+        offerId,
+        mandateId: selection.mandate.id,
+        mandateVersionId: selection.version.id,
+        quote,
+      },
+      currentTime,
+    );
 
     try {
       await this.database.db.transaction(async (transaction) => {
@@ -90,7 +117,7 @@ export class CheckoutService {
           mandateVersionId: selection.version.id,
           selectedOfferId: offerId,
           quoteId,
-          status: 'QUOTED',
+          status: "QUOTED",
         });
         await transaction.insert(checkoutSessions).values({
           id: checkoutId,
@@ -98,7 +125,7 @@ export class CheckoutService {
           quoteId,
           merchantId: quote.merchantId,
           providerCheckoutId: checkout.providerCheckoutId,
-          status: 'READY',
+          status: "READY",
           totalMinor: quote.totalMinor,
           currency: quote.currency,
           signedCheckout: checkout.signedPayload,
@@ -107,58 +134,103 @@ export class CheckoutService {
           createdAt: currentTime,
           expiresAt: checkout.expiresAt,
         });
-        await transaction.insert(checkoutLineItems).values(quote.lineItems.map((item) => ({
-          checkoutId,
-          merchantProductId: item.merchantProductId,
-          productId: item.productId,
-          productName: item.productName,
-          category: item.category,
-          originIata: item.originIata,
-          destinationIata: item.destinationIata,
-          departureDate: item.departureDate,
-          quantity: item.quantity,
-          unitPriceMinor: item.unitPriceMinor,
-          totalMinor: item.totalMinor,
-          currency: item.currency,
-        })));
-        await transaction.update(purchaseIntents).set({ status: 'OFFER_SELECTED', updatedAt: currentTime })
+        await transaction.insert(checkoutLineItems).values(
+          quote.lineItems.map((item) => ({
+            checkoutId,
+            merchantProductId: item.merchantProductId,
+            productId: item.productId,
+            productName: item.productName,
+            category: item.category,
+            originIata: item.originIata,
+            destinationIata: item.destinationIata,
+            departureDate: item.departureDate,
+            quantity: item.quantity,
+            unitPriceMinor: item.unitPriceMinor,
+            totalMinor: item.totalMinor,
+            currency: item.currency,
+          })),
+        );
+        await transaction
+          .update(purchaseIntents)
+          .set({ status: "OFFER_SELECTED", updatedAt: currentTime })
           .where(eq(purchaseIntents.id, intentId));
       });
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new HttpError(409, 'CHECKOUT_REPLAYED', 'Merchant checkout evidence has already been used');
+        throw new HttpError(
+          409,
+          "CHECKOUT_REPLAYED",
+          "Merchant checkout evidence has already been used",
+        );
       }
       throw error;
     }
 
     await this.audit.append({
-      eventType: 'CHECKOUT_CREATED', actorType: 'AGENT', actorId: selection.mandate.agentId,
-      intentId, mandateId: selection.mandate.id, mandateVersionId: selection.version.id,
-      attemptId, payload: {
-        offerId, quoteId, checkoutId, merchantId: quote.merchantId,
-        totalMinor: quote.totalMinor.toString(), currency: quote.currency,
-        checkoutHash: checkout.payloadHash.toString('base64url'),
-        priceDriftMinor: (quote.totalMinor - selection.offer.unitPriceMinor).toString(),
+      eventType: "CHECKOUT_CREATED",
+      actorType: "AGENT",
+      actorId: selection.mandate.agentId,
+      intentId,
+      mandateId: selection.mandate.id,
+      mandateVersionId: selection.version.id,
+      attemptId,
+      payload: {
+        offerId,
+        quoteId,
+        checkoutId,
+        merchantId: quote.merchantId,
+        totalMinor: quote.totalMinor.toString(),
+        currency: quote.currency,
+        checkoutHash: checkout.payloadHash.toString("base64url"),
+        priceDriftMinor: (
+          quote.totalMinor - selection.offer.unitPriceMinor
+        ).toString(),
       },
     });
     return this.getAttempt(userId, attemptId, selection.offer.unitPriceMinor);
   }
 
-  async getAttempt(userId: string, attemptId: string, discoveredPrice?: bigint) {
-    const [record] = await this.database.db.select({
-      attempt: purchaseAttempts,
-      checkout: checkoutSessions,
-      quote: quotes,
-      offer: offers,
-    }).from(purchaseAttempts)
-      .innerJoin(purchaseIntents, eq(purchaseIntents.id, purchaseAttempts.intentId))
-      .innerJoin(checkoutSessions, eq(checkoutSessions.attemptId, purchaseAttempts.id))
+  async getAttempt(
+    userId: string,
+    attemptId: string,
+    discoveredPrice?: bigint,
+  ) {
+    const [record] = await this.database.db
+      .select({
+        attempt: purchaseAttempts,
+        checkout: checkoutSessions,
+        quote: quotes,
+        offer: offers,
+      })
+      .from(purchaseAttempts)
+      .innerJoin(
+        purchaseIntents,
+        eq(purchaseIntents.id, purchaseAttempts.intentId),
+      )
+      .innerJoin(
+        checkoutSessions,
+        eq(checkoutSessions.attemptId, purchaseAttempts.id),
+      )
       .innerJoin(quotes, eq(quotes.id, purchaseAttempts.quoteId))
       .innerJoin(offers, eq(offers.id, purchaseAttempts.selectedOfferId))
-      .where(and(eq(purchaseAttempts.id, attemptId), eq(purchaseIntents.userId, userId))).limit(1);
-    if (!record) throw new HttpError(404, 'PURCHASE_ATTEMPT_NOT_FOUND', 'Purchase attempt not found');
-    const lineItems = await this.database.db.select().from(checkoutLineItems)
-      .where(eq(checkoutLineItems.checkoutId, record.checkout.id)).orderBy(asc(checkoutLineItems.id));
+      .where(
+        and(
+          eq(purchaseAttempts.id, attemptId),
+          eq(purchaseIntents.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!record)
+      throw new HttpError(
+        404,
+        "PURCHASE_ATTEMPT_NOT_FOUND",
+        "Purchase attempt not found",
+      );
+    const lineItems = await this.database.db
+      .select()
+      .from(checkoutLineItems)
+      .where(eq(checkoutLineItems.checkoutId, record.checkout.id))
+      .orderBy(asc(checkoutLineItems.id));
     const provider = this.providers.get(record.checkout.merchantId);
     const signedCheckout = {
       providerCheckoutId: record.checkout.providerCheckoutId,
@@ -167,18 +239,22 @@ export class CheckoutService {
       signedPayload: record.checkout.signedCheckout,
       expiresAt: record.checkout.expiresAt,
     };
-    const signatureValid = provider ? await provider.verifyCheckout(signedCheckout) : false;
-    const hashValid = this.payloadHash(signedCheckout.payload).equals(signedCheckout.payloadHash);
+    const signatureValid = provider
+      ? await provider.verifyCheckout(signedCheckout)
+      : false;
+    const hashValid = this.payloadHash(signedCheckout.payload).equals(
+      signedCheckout.payloadHash,
+    );
     const now = new Date();
     const expired = record.checkout.expiresAt.getTime() <= now.getTime();
-    const replayed = record.checkout.status !== 'READY';
+    const replayed = record.checkout.status !== "READY";
     const originalPrice = discoveredPrice ?? record.offer.unitPriceMinor;
     return {
       attempt: record.attempt,
       quote: this.serializeMoney(record.quote),
       checkout: {
         ...this.serializeMoney(record.checkout),
-        checkoutHash: record.checkout.checkoutHash.toString('base64url'),
+        checkoutHash: record.checkout.checkoutHash.toString("base64url"),
         lineItems: lineItems.map((item) => ({
           ...item,
           unitPriceMinor: item.unitPriceMinor.toString(),
@@ -196,55 +272,139 @@ export class CheckoutService {
     };
   }
 
-  private assertQuote(quote: AuthoritativeQuote, offer: typeof offers.$inferSelect, now: Date): void {
-    const total = quote.lineItems.reduce((sum, item) => sum + item.totalMinor, 0n);
-    const bound = quote.offerId === offer.id && quote.merchantId === offer.merchantId
-      && quote.currency === offer.currency && quote.lineItems.length > 0
-      && quote.lineItems.every((item) => item.merchantProductId === offer.merchantProductId
-        && item.currency === quote.currency && item.quantity > 0
-        && item.totalMinor === item.unitPriceMinor * BigInt(item.quantity))
-      && total === quote.totalMinor;
-    if (!bound) throw new HttpError(502, 'QUOTE_BINDING_MISMATCH', 'Merchant quote does not match the selected offer');
-    if (quote.observedAt.getTime() > now.getTime() || quote.expiresAt.getTime() <= now.getTime()) {
-      throw new HttpError(409, 'QUOTE_EXPIRED', 'Merchant quote is expired');
+  private assertQuote(
+    quote: AuthoritativeQuote,
+    offer: typeof offers.$inferSelect,
+    now: Date,
+  ): void {
+    const total = quote.lineItems.reduce(
+      (sum, item) => sum + item.totalMinor,
+      0n,
+    );
+    const bound =
+      quote.offerId === offer.id &&
+      quote.merchantId === offer.merchantId &&
+      quote.currency === offer.currency &&
+      quote.lineItems.length > 0 &&
+      quote.lineItems.every(
+        (item) =>
+          item.merchantProductId === offer.merchantProductId &&
+          item.currency === quote.currency &&
+          item.quantity > 0 &&
+          item.totalMinor === item.unitPriceMinor * BigInt(item.quantity),
+      ) &&
+      total === quote.totalMinor;
+    if (!bound)
+      throw new HttpError(
+        502,
+        "QUOTE_BINDING_MISMATCH",
+        "Merchant quote does not match the selected offer",
+      );
+    if (
+      quote.observedAt.getTime() > now.getTime() ||
+      quote.expiresAt.getTime() <= now.getTime()
+    ) {
+      throw new HttpError(409, "QUOTE_EXPIRED", "Merchant quote is expired");
     }
   }
 
   private async assertCheckout(
     provider: CommerceProvider,
     checkout: SignedCheckout,
-    expected: { attemptId: string; quoteId: string; offerId: string; mandateId: string; mandateVersionId: string; quote: AuthoritativeQuote },
+    expected: {
+      attemptId: string;
+      quoteId: string;
+      offerId: string;
+      mandateId: string;
+      mandateVersionId: string;
+      quote: AuthoritativeQuote;
+    },
     now: Date,
   ): Promise<void> {
     if (!(await provider.verifyCheckout(checkout))) {
-      throw new HttpError(502, 'CHECKOUT_SIGNATURE_INVALID', 'Merchant checkout signature is invalid');
+      throw new HttpError(
+        502,
+        "CHECKOUT_SIGNATURE_INVALID",
+        "Merchant checkout signature is invalid",
+      );
     }
     if (!this.payloadHash(checkout.payload).equals(checkout.payloadHash)) {
-      throw new HttpError(502, 'CHECKOUT_HASH_INVALID', 'Merchant checkout hash is invalid');
+      throw new HttpError(
+        502,
+        "CHECKOUT_HASH_INVALID",
+        "Merchant checkout hash is invalid",
+      );
     }
     const payload = checkout.payload;
     const bound = checkoutPayloadBound(payload, checkout, expected);
-    if (!bound) throw new HttpError(502, 'CHECKOUT_BINDING_MISMATCH', 'Merchant checkout is not bound to this purchase');
+    if (!bound)
+      throw new HttpError(
+        502,
+        "CHECKOUT_BINDING_MISMATCH",
+        "Merchant checkout is not bound to this purchase",
+      );
     if (checkout.expiresAt.getTime() <= now.getTime()) {
-      throw new HttpError(409, 'CHECKOUT_EXPIRED', 'Merchant checkout is expired');
+      throw new HttpError(
+        409,
+        "CHECKOUT_EXPIRED",
+        "Merchant checkout is expired",
+      );
     }
   }
 
-  private async findOwnedSelection(userId: string, intentId: string, offerId: string) {
-    const [selection] = await this.database.db.select({ offer: offers })
-      .from(offers).innerJoin(discoveryRuns, eq(discoveryRuns.id, offers.discoveryRunId))
-      .innerJoin(purchaseIntents, eq(purchaseIntents.id, discoveryRuns.intentId))
-      .where(and(eq(offers.id, offerId), eq(discoveryRuns.intentId, intentId),
-        eq(discoveryRuns.status, 'COMPLETED'), eq(purchaseIntents.userId, userId))).limit(1);
-    if (!selection) throw new HttpError(404, 'OFFER_NOT_FOUND', 'Offer not found');
+  private async findOwnedSelection(
+    userId: string,
+    intentId: string,
+    offerId: string,
+  ) {
+    const [selection] = await this.database.db
+      .select({ offer: offers })
+      .from(offers)
+      .innerJoin(discoveryRuns, eq(discoveryRuns.id, offers.discoveryRunId))
+      .innerJoin(
+        purchaseIntents,
+        eq(purchaseIntents.id, discoveryRuns.intentId),
+      )
+      .where(
+        and(
+          eq(offers.id, offerId),
+          eq(discoveryRuns.intentId, intentId),
+          eq(discoveryRuns.status, "COMPLETED"),
+          eq(purchaseIntents.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!selection)
+      throw new HttpError(404, "OFFER_NOT_FOUND", "Offer not found");
     if (!selection.offer.supportsAuthoritativeCheckout) {
-      throw new HttpError(409, 'AUTHORITATIVE_CHECKOUT_UNSUPPORTED', 'Offer cannot produce an authoritative checkout');
+      throw new HttpError(
+        409,
+        "AUTHORITATIVE_CHECKOUT_UNSUPPORTED",
+        "Offer cannot produce an authoritative checkout",
+      );
     }
-    const [authorization] = await this.database.db.select({ mandate: mandates, version: mandateVersions })
-      .from(mandates).innerJoin(mandateVersions, eq(mandateVersions.id, mandates.currentVersionId))
-      .where(and(eq(mandates.intentId, intentId), eq(mandates.userId, userId),
-        eq(mandates.status, 'ACTIVE'), eq(mandateVersions.status, 'ACTIVE'))).limit(1);
-    if (!authorization) throw new HttpError(409, 'ACTIVE_MANDATE_REQUIRED', 'An active mandate is required');
+    const [authorization] = await this.database.db
+      .select({ mandate: mandates, version: mandateVersions })
+      .from(mandates)
+      .innerJoin(
+        mandateVersions,
+        eq(mandateVersions.id, mandates.currentVersionId),
+      )
+      .where(
+        and(
+          eq(mandates.intentId, intentId),
+          eq(mandates.userId, userId),
+          eq(mandates.status, "ACTIVE"),
+          eq(mandateVersions.status, "ACTIVE"),
+        ),
+      )
+      .limit(1);
+    if (!authorization)
+      throw new HttpError(
+        409,
+        "ACTIVE_MANDATE_REQUIRED",
+        "An active mandate is required",
+      );
     return { ...selection, ...authorization };
   }
 
@@ -253,6 +413,27 @@ export class CheckoutService {
   }
 
   private payloadHash(payload: Readonly<Record<string, unknown>>): Buffer {
-    return createHash('sha256').update(canonicalize(payload), 'utf8').digest();
+    return createHash("sha256").update(canonicalize(payload), "utf8").digest();
+  }
+
+  private offerDepartureDate(
+    rawPayload: unknown,
+  ): { departureDate: string } | Record<string, never> {
+    if (
+      !rawPayload ||
+      typeof rawPayload !== "object" ||
+      !("attributes" in rawPayload)
+    )
+      return {};
+    const attributes = rawPayload.attributes;
+    if (
+      !attributes ||
+      typeof attributes !== "object" ||
+      !("departureDate" in attributes)
+    )
+      return {};
+    return typeof attributes.departureDate === "string"
+      ? { departureDate: attributes.departureDate }
+      : {};
   }
 }

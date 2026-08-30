@@ -1,10 +1,16 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from "node:crypto";
 
-import { HttpError } from '../../shared/http-error.js';
-import { ap2CheckoutReceiptSchema, ap2CredentialHash } from '../mandates/ap2-credential.js';
-import { VUELAYA_MERCHANT_ID } from '../discovery/mock-vuelaya-provider.js';
-import { AEROSUR_MERCHANT_ID, NUBEVIA_MERCHANT_ID } from '../discovery/mock-multi-merchant-providers.js';
-import type { CheckoutSigner } from './checkout-signer.js';
+import { HttpError } from "../../shared/http-error.js";
+import {
+  ap2CheckoutReceiptSchema,
+  ap2CredentialHash,
+} from "../mandates/ap2-credential.js";
+import { VUELAYA_MERCHANT_ID } from "../discovery/mock-vuelaya-provider.js";
+import {
+  AEROSUR_MERCHANT_ID,
+  NUBEVIA_MERCHANT_ID,
+} from "../discovery/mock-multi-merchant-providers.js";
+import type { CheckoutSigner } from "./checkout-signer.js";
 import type {
   AuthoritativeQuote,
   CommerceOfferReference,
@@ -12,7 +18,7 @@ import type {
   CompleteCheckoutRequest,
   CreateCheckoutRequest,
   SignedCheckout,
-} from './commerce-types.js';
+} from "./commerce-types.js";
 
 interface MockCatalogEntry {
   readonly priceMinor: bigint;
@@ -24,8 +30,22 @@ interface MockCatalogEntry {
 }
 
 const VUELAYA_CATALOG: Readonly<Record<string, MockCatalogEntry>> = {
-  'VY-MEX-COR-130': { priceMinor: 13_000n, productName: 'VuelaYa Mexico City to Córdoba flight', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
-  'VY-MEX-COR-300': { priceMinor: 30_000n, productName: 'VuelaYa premium Mexico City to Córdoba flight', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+  "VY-MEX-COR-130": {
+    priceMinor: 13_000n,
+    productName: "VuelaYa Mexico City to Córdoba flight",
+    category: "travel.flight",
+    originIata: "MEX",
+    destinationIata: "COR",
+    departureDate: "2026-09-15",
+  },
+  "VY-MEX-COR-300": {
+    priceMinor: 30_000n,
+    productName: "VuelaYa premium Mexico City to Córdoba flight",
+    category: "travel.flight",
+    originIata: "MEX",
+    destinationIata: "COR",
+    departureDate: "2026-09-15",
+  },
 };
 
 interface MockCommerceOptions {
@@ -35,8 +55,14 @@ interface MockCommerceOptions {
   readonly catalog: Readonly<Record<string, MockCatalogEntry>>;
 }
 
-function isCommerceOptions(value: MockCommerceOptions | Readonly<Record<string, bigint>>): value is MockCommerceOptions {
-  return typeof value.merchantId === 'string' && typeof value.id === 'string' && 'catalog' in value;
+function isCommerceOptions(
+  value: MockCommerceOptions | Readonly<Record<string, bigint>>,
+): value is MockCommerceOptions {
+  return (
+    typeof value.merchantId === "string" &&
+    typeof value.id === "string" &&
+    "catalog" in value
+  );
 }
 
 export class MockVuelaYaCommerceProvider implements CommerceProvider {
@@ -47,28 +73,48 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
   constructor(
     private readonly signer: CheckoutSigner,
     optionsOrPrices: MockCommerceOptions | Readonly<Record<string, bigint>> = {
-      id: 'mock-vuelaya-commerce', merchantId: VUELAYA_MERCHANT_ID,
-      orderPrefix: 'VY', catalog: VUELAYA_CATALOG,
+      id: "mock-vuelaya-commerce",
+      merchantId: VUELAYA_MERCHANT_ID,
+      orderPrefix: "VY",
+      catalog: VUELAYA_CATALOG,
     },
   ) {
-    const options: MockCommerceOptions = isCommerceOptions(optionsOrPrices) ? optionsOrPrices : {
-      id: 'mock-vuelaya-commerce', merchantId: VUELAYA_MERCHANT_ID, orderPrefix: 'VY',
-      catalog: Object.fromEntries(Object.entries(VUELAYA_CATALOG).map(([id, entry]) => [
-        id, { ...entry, priceMinor: optionsOrPrices[id] ?? entry.priceMinor },
-      ])),
-    };
+    const options: MockCommerceOptions = isCommerceOptions(optionsOrPrices)
+      ? optionsOrPrices
+      : {
+          id: "mock-vuelaya-commerce",
+          merchantId: VUELAYA_MERCHANT_ID,
+          orderPrefix: "VY",
+          catalog: Object.fromEntries(
+            Object.entries(VUELAYA_CATALOG).map(([id, entry]) => [
+              id,
+              { ...entry, priceMinor: optionsOrPrices[id] ?? entry.priceMinor },
+            ]),
+          ),
+        };
     this.options = options;
     this.id = options.id;
     this.merchantId = options.merchantId;
   }
 
-  async getLiveQuote(offer: CommerceOfferReference, currentTime: Date): Promise<AuthoritativeQuote> {
+  async getLiveQuote(
+    offer: CommerceOfferReference,
+    currentTime: Date,
+  ): Promise<AuthoritativeQuote> {
     if (offer.merchantId !== this.merchantId) {
-      throw new HttpError(400, 'COMMERCE_MERCHANT_MISMATCH', 'Offer belongs to another merchant');
+      throw new HttpError(
+        400,
+        "COMMERCE_MERCHANT_MISMATCH",
+        "Offer belongs to another merchant",
+      );
     }
     const catalogEntry = this.options.catalog[offer.merchantProductId];
     if (catalogEntry === undefined) {
-      throw new HttpError(409, 'OFFER_NO_LONGER_AVAILABLE', 'The selected offer is no longer available');
+      throw new HttpError(
+        409,
+        "OFFER_NO_LONGER_AVAILABLE",
+        "The selected offer is no longer available",
+      );
     }
     const providerQuoteId = `vy-quote-${randomUUID()}`;
     const expiresAt = new Date(currentTime.getTime() + 5 * 60 * 1000);
@@ -79,14 +125,14 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       category: catalogEntry.category,
       originIata: catalogEntry.originIata,
       destinationIata: catalogEntry.destinationIata,
-      departureDate: catalogEntry.departureDate,
+      departureDate: offer.departureDate ?? catalogEntry.departureDate,
       quantity: 1,
       unitPriceMinor: catalogEntry.priceMinor,
       totalMinor: catalogEntry.priceMinor,
       currency: offer.currency,
     };
     const payload = {
-      ucpVersion: '2026-01-23',
+      ucpVersion: "2026-01-23",
       merchantId: this.merchantId,
       providerQuoteId,
       offerId: offer.offerId,
@@ -94,7 +140,13 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
       currency: offer.currency,
       observedAt: currentTime.toISOString(),
       expiresAt: expiresAt.toISOString(),
-      lineItems: [{ ...lineItem, unitPriceMinor: catalogEntry.priceMinor.toString(), totalMinor: catalogEntry.priceMinor.toString() }],
+      lineItems: [
+        {
+          ...lineItem,
+          unitPriceMinor: catalogEntry.priceMinor.toString(),
+          totalMinor: catalogEntry.priceMinor.toString(),
+        },
+      ],
     };
     return {
       providerQuoteId,
@@ -109,11 +161,13 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
     };
   }
 
-  async createCheckout(request: CreateCheckoutRequest): Promise<SignedCheckout> {
+  async createCheckout(
+    request: CreateCheckoutRequest,
+  ): Promise<SignedCheckout> {
     const providerCheckoutId = `vy-checkout-${randomUUID()}`;
     const expiresAt = request.quote.expiresAt;
     const payload = {
-      vct: 'dev.ucp.shopping.checkout.1',
+      vct: "dev.ucp.shopping.checkout.1",
       providerCheckoutId,
       attemptId: request.attemptId,
       quoteId: request.quoteId,
@@ -141,17 +195,30 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
   }
 
   async completeCheckout(request: CompleteCheckoutRequest) {
-    if (request.merchantId !== this.merchantId || request.amountMinor < 0n
-      || request.currency !== 'USD' || !request.credentialReference || !request.ap2CheckoutMandate) {
-      throw new HttpError(409, 'MERCHANT_PAYMENT_REJECTED', 'Merchant rejected the payment scope');
+    if (
+      request.merchantId !== this.merchantId ||
+      request.amountMinor < 0n ||
+      request.currency !== "USD" ||
+      !request.credentialReference ||
+      !request.ap2CheckoutMandate
+    ) {
+      throw new HttpError(
+        409,
+        "MERCHANT_PAYMENT_REJECTED",
+        "Merchant rejected the payment scope",
+      );
     }
     const merchantOrderId = `${this.options.orderPrefix}-ORDER-${randomUUID()}`;
     const completedAt = new Date();
-    const receipt = await this.signer.signReceipt(ap2CheckoutReceiptSchema.parse({
-      status: 'Success', iss: `urn:nextwave:merchant:${this.merchantId}`,
-      iat: Math.floor(completedAt.getTime() / 1_000),
-      reference: ap2CredentialHash(request.ap2CheckoutMandate), order_id: merchantOrderId,
-    }));
+    const receipt = await this.signer.signReceipt(
+      ap2CheckoutReceiptSchema.parse({
+        status: "Success",
+        iss: `urn:nextwave:merchant:${this.merchantId}`,
+        iat: Math.floor(completedAt.getTime() / 1_000),
+        reference: ap2CredentialHash(request.ap2CheckoutMandate),
+        order_id: merchantOrderId,
+      }),
+    );
     return { merchantOrderId, completedAt, checkoutReceipt: receipt };
   }
 }
@@ -159,9 +226,18 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
 export class MockAeroSurCommerceProvider extends MockVuelaYaCommerceProvider {
   constructor(signer: CheckoutSigner) {
     super(signer, {
-      id: 'mock-aerosur-commerce', merchantId: AEROSUR_MERCHANT_ID, orderPrefix: 'AS',
+      id: "mock-aerosur-commerce",
+      merchantId: AEROSUR_MERCHANT_ID,
+      orderPrefix: "AS",
       catalog: {
-        'AS-MEX-COR-118': { priceMinor: 12_500n, productName: 'AeroSur Mexico City to Córdoba', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+        "AS-MEX-COR-118": {
+          priceMinor: 12_500n,
+          productName: "AeroSur Mexico City to Córdoba",
+          category: "travel.flight",
+          originIata: "MEX",
+          destinationIata: "COR",
+          departureDate: "2026-09-15",
+        },
       },
     });
   }
@@ -170,16 +246,25 @@ export class MockAeroSurCommerceProvider extends MockVuelaYaCommerceProvider {
 export class MockNubeViaCommerceProvider extends MockVuelaYaCommerceProvider {
   constructor(signer: CheckoutSigner) {
     super(signer, {
-      id: 'mock-nubevia-ucp-commerce', merchantId: NUBEVIA_MERCHANT_ID, orderPrefix: 'NV',
+      id: "mock-nubevia-ucp-commerce",
+      merchantId: NUBEVIA_MERCHANT_ID,
+      orderPrefix: "NV",
       catalog: {
-        'NV-MEX-COR-145': { priceMinor: 14_200n, productName: 'NubeVia Mexico City to Córdoba', category: 'travel.flight', originIata: 'MEX', destinationIata: 'COR', departureDate: '2026-09-15' },
+        "NV-MEX-COR-145": {
+          priceMinor: 14_200n,
+          productName: "NubeVia Mexico City to Córdoba",
+          category: "travel.flight",
+          originIata: "MEX",
+          destinationIata: "COR",
+          departureDate: "2026-09-15",
+        },
       },
     });
   }
 }
 
 export class UnavailableCommerceProvider implements CommerceProvider {
-  readonly id = 'unavailable-commerce';
+  readonly id = "unavailable-commerce";
   readonly merchantId: string;
 
   constructor(merchantId: string) {
@@ -187,11 +272,19 @@ export class UnavailableCommerceProvider implements CommerceProvider {
   }
 
   async getLiveQuote(): Promise<never> {
-    throw new HttpError(503, 'COMMERCE_PROVIDER_UNAVAILABLE', 'Commerce provider is not configured');
+    throw new HttpError(
+      503,
+      "COMMERCE_PROVIDER_UNAVAILABLE",
+      "Commerce provider is not configured",
+    );
   }
 
   async createCheckout(): Promise<never> {
-    throw new HttpError(503, 'COMMERCE_PROVIDER_UNAVAILABLE', 'Commerce provider is not configured');
+    throw new HttpError(
+      503,
+      "COMMERCE_PROVIDER_UNAVAILABLE",
+      "Commerce provider is not configured",
+    );
   }
 
   async verifyCheckout(): Promise<boolean> {
@@ -199,6 +292,10 @@ export class UnavailableCommerceProvider implements CommerceProvider {
   }
 
   async completeCheckout(): Promise<never> {
-    throw new HttpError(503, 'COMMERCE_PROVIDER_UNAVAILABLE', 'Commerce provider is not configured');
+    throw new HttpError(
+      503,
+      "COMMERCE_PROVIDER_UNAVAILABLE",
+      "Commerce provider is not configured",
+    );
   }
 }

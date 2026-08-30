@@ -7,6 +7,7 @@ export interface CommerceOfferReference {
   readonly category: string;
   readonly discoveredUnitPriceMinor: bigint;
   readonly currency: string;
+  readonly departureDate?: string;
 }
 
 export interface CheckoutLineItem {
@@ -78,8 +79,13 @@ export interface SignedProtocolReceipt {
 export interface CommerceProvider {
   readonly id: string;
   readonly merchantId: string;
-  getLiveQuote(offer: CommerceOfferReference, currentTime: Date): Promise<AuthoritativeQuote>;
+  getLiveQuote(
+    offer: CommerceOfferReference,
+    currentTime: Date,
+  ): Promise<AuthoritativeQuote>;
   createCheckout(request: CreateCheckoutRequest): Promise<SignedCheckout>;
   verifyCheckout(checkout: SignedCheckout): Promise<boolean>;
-  completeCheckout(request: CompleteCheckoutRequest): Promise<CheckoutCompletion>;
+  completeCheckout(
+    request: CompleteCheckoutRequest,
+  ): Promise<CheckoutCompletion>;
 }

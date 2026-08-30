@@ -1,35 +1,50 @@
-import 'dotenv/config';
+import "dotenv/config";
 
-import { readFile } from 'node:fs/promises';
-import argon2 from 'argon2';
+import { readFile } from "node:fs/promises";
+import argon2 from "argon2";
 
-import { createDatabaseClient } from '../database/client.js';
-import { compileSpecifications, hashIntentDraft, type FlightIntentDraft } from '../modules/purchase-intents/flight-intent-draft.js';
-import { Es256MandateSigner } from '../modules/mandates/mandate-signer.js';
-import { MandateService } from '../modules/mandates/mandate-service.js';
-import { Ap2CredentialIssuer } from '../modules/mandates/ap2-credential.js';
+import { createDatabaseClient } from "../database/client.js";
+import {
+  compileSpecifications,
+  hashIntentDraft,
+  type FlightIntentDraft,
+} from "../modules/purchase-intents/flight-intent-draft.js";
+import { Es256MandateSigner } from "../modules/mandates/mandate-signer.js";
+import { MandateService } from "../modules/mandates/mandate-service.js";
+import { Ap2CredentialIssuer } from "../modules/mandates/ap2-credential.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const password = process.env.DEMO_ACCOUNT_PASSWORD;
-if (!databaseUrl) throw new Error('DATABASE_URL is required');
-if (!password || password.length < 12) throw new Error('DEMO_ACCOUNT_PASSWORD must be at least 12 characters');
+if (!databaseUrl) throw new Error("DATABASE_URL is required");
+if (!password || password.length < 12)
+  throw new Error("DEMO_ACCOUNT_PASSWORD must be at least 12 characters");
 const demoPassword = password;
-const mandateSigningPrivateJwk = process.env.MANDATE_SIGNING_PRIVATE_JWK
-  ?? await readFile('/app/runtime-secrets/mandate-signing.jwk', 'utf8').catch(() => undefined);
-const agentSigningPrivateJwk = process.env.AGENT_SIGNING_PRIVATE_JWK
-  ?? await readFile('/app/runtime-secrets/agent-signing.jwk', 'utf8').catch(() => undefined);
-const demoUserId = '30000000-0000-4000-8000-000000000001';
-const demoAgentId = '31000000-0000-4000-8000-000000000001';
-const demoIntentId = '32000000-0000-4000-8000-000000000001';
+const mandateSigningPrivateJwk =
+  process.env.MANDATE_SIGNING_PRIVATE_JWK ??
+  (await readFile("/app/runtime-secrets/mandate-signing.jwk", "utf8").catch(
+    () => undefined,
+  ));
+const agentSigningPrivateJwk =
+  process.env.AGENT_SIGNING_PRIVATE_JWK ??
+  (await readFile("/app/runtime-secrets/agent-signing.jwk", "utf8").catch(
+    () => undefined,
+  ));
+const demoUserId = "30000000-0000-4000-8000-000000000001";
+const demoAgentId = "31000000-0000-4000-8000-000000000001";
+const demoIntentId = "32000000-0000-4000-8000-000000000001";
 
 const database = createDatabaseClient(databaseUrl);
 const client = await database.pool.connect();
 try {
-  if (process.env.DEMO_RESET_IF_EMPTY === 'true') {
-    const existing = await client.query<{ exists: boolean }>('SELECT EXISTS (SELECT 1 FROM users) AS exists');
+  if (process.env.DEMO_RESET_IF_EMPTY === "true") {
+    const existing = await client.query<{ exists: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM users) AS exists",
+    );
     if (existing.rows[0]?.exists) {
       await ensureDefaultDemoPurchase();
-      process.stdout.write('Demo accounts already exist; default comparison mandate is ready.\n');
+      process.stdout.write(
+        "Demo accounts already exist; default comparison mandate is ready.\n",
+      );
       process.exitCode = 0;
     } else {
       await reset();
@@ -43,39 +58,50 @@ try {
 }
 
 async function reset(): Promise<void> {
-  const passwordHash = await argon2.hash(demoPassword, { type: argon2.argon2id });
+  const passwordHash = await argon2.hash(demoPassword, {
+    type: argon2.argon2id,
+  });
   try {
-    await client.query('BEGIN');
-    await client.query('TRUNCATE TABLE users CASCADE');
-    await client.query(`INSERT INTO users (id, email, password_hash, display_name, role) VALUES
+    await client.query("BEGIN");
+    await client.query("TRUNCATE TABLE users CASCADE");
+    await client.query(
+      `INSERT INTO users (id, email, password_hash, display_name, role) VALUES
       ('30000000-0000-4000-8000-000000000001', 'marta@nextwave.demo', $1, 'Marta Pérez', 'HUMAN'),
       ('30000000-0000-4000-8000-000000000002', 'merchant@nextwave.demo', $1, 'VuelaYa Operator', 'MERCHANT_OPERATOR'),
-      ('30000000-0000-4000-8000-000000000003', 'auditor@nextwave.demo', $1, 'Independent Auditor', 'AUDITOR')`, [passwordHash]);
+      ('30000000-0000-4000-8000-000000000003', 'auditor@nextwave.demo', $1, 'Independent Auditor', 'AUDITOR')`,
+      [passwordHash],
+    );
     await ensureDemoMerchantOperator();
     await client.query(`INSERT INTO agents (id, owner_user_id, name, status, current_key_id) VALUES
       ('31000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001',
        'Marta purchasing agent', 'ACTIVE', 'demo-agent-key-1')`);
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     await ensureDefaultDemoPurchase();
-    process.stdout.write('Demo state reset: 3 accounts, 1 purchasing agent, and 1 active comparison mandate.\n');
+    process.stdout.write(
+      "Demo state reset: 3 accounts, 1 purchasing agent, and 1 active comparison mandate.\n",
+    );
   } catch (error) {
-    await client.query('ROLLBACK');
+    await client.query("ROLLBACK");
     throw error;
   }
 }
 
 async function ensureDefaultDemoPurchase(): Promise<void> {
-  const account = await client.query('SELECT 1 FROM users WHERE id = $1', [demoUserId]);
+  const account = await client.query("SELECT 1 FROM users WHERE id = $1", [
+    demoUserId,
+  ]);
   if (!account.rowCount) return;
   await ensureDemoMerchantOperator();
+  const departureDate = futureDate(10);
+  const validUntilDate = futureDate(7);
   const draft: FlightIntentDraft = {
-    origin: { city: 'Mexico City', iata: 'MEX' },
-    destination: { city: 'Córdoba', country: 'Argentina', iata: 'COR' },
-    departureDate: '2026-09-15',
+    origin: { city: "Mexico City", iata: "MEX" },
+    destination: { city: "Córdoba", country: "Argentina", iata: "COR" },
+    departureDate,
     passengers: 1,
-    maxTotalMinor: '15000',
-    currency: 'USD',
-    validUntil: '2026-09-30T23:59:59.000Z',
+    maxTotalMinor: "15000",
+    currency: "USD",
+    validUntil: `${validUntilDate}T23:59:59.000Z`,
     requiresFinalConfirmation: true,
     sources: {
       origin: 0,
@@ -90,28 +116,43 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
   };
   const specifications = compileSpecifications(draft);
   if (!mandateSigningPrivateJwk) {
-    throw new Error('MANDATE_SIGNING_PRIVATE_JWK or the persisted Docker signing key is required');
+    throw new Error(
+      "MANDATE_SIGNING_PRIVATE_JWK or the persisted Docker signing key is required",
+    );
   }
   if (!agentSigningPrivateJwk) {
-    throw new Error('AGENT_SIGNING_PRIVATE_JWK or the persisted Docker agent key is required');
+    throw new Error(
+      "AGENT_SIGNING_PRIVATE_JWK or the persisted Docker agent key is required",
+    );
   }
-  const trustedJwk = JSON.parse(mandateSigningPrivateJwk) as Record<string, unknown>;
-  const agentJwk = JSON.parse(agentSigningPrivateJwk) as Record<string, unknown>;
+  const trustedJwk = JSON.parse(mandateSigningPrivateJwk) as Record<
+    string,
+    unknown
+  >;
+  const agentJwk = JSON.parse(agentSigningPrivateJwk) as Record<
+    string,
+    unknown
+  >;
   const signer = await Es256MandateSigner.create(
     trustedJwk,
-    process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-mandate-1',
+    process.env.MANDATE_SIGNING_KEY_ID ?? "nextwave-mandate-1",
   );
   const ap2TrustedIssuer = await Ap2CredentialIssuer.create(
     trustedJwk,
-    process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-mandate-1',
-    'urn:nextwave:trusted-agent-provider',
+    process.env.MANDATE_SIGNING_KEY_ID ?? "nextwave-mandate-1",
+    "urn:nextwave:trusted-agent-provider",
   );
   const ap2AgentIssuer = await Ap2CredentialIssuer.create(
     agentJwk,
-    process.env.AGENT_SIGNING_KEY_ID ?? 'nextwave-shopping-agent-1',
-    'urn:nextwave:shopping-agent',
+    process.env.AGENT_SIGNING_KEY_ID ?? "nextwave-shopping-agent-1",
+    "urn:nextwave:shopping-agent",
   );
-  const mandateService = new MandateService(database, signer, ap2TrustedIssuer, ap2AgentIssuer);
+  const mandateService = new MandateService(
+    database,
+    signer,
+    ap2TrustedIssuer,
+    ap2AgentIssuer,
+  );
   const existing = await client.query<{
     mandate_id: string;
     mandate_status: string;
@@ -131,22 +172,33 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
   );
   if (existing.rowCount) {
     const current = existing.rows[0];
-    if (current?.mandate_status === 'REVOKED' || current?.mandate_status === 'EXPIRED') return;
-    if (current?.signed_payload && current.ap2_open_checkout_credential
-      && current.ap2_open_payment_credential
-      && await signer.verify(current.signed_payload, current.canonical_payload)) return;
-    if (!current?.mandate_id) throw new Error('Default demo intent exists without its mandate');
+    if (
+      current?.mandate_status === "REVOKED" ||
+      current?.mandate_status === "EXPIRED"
+    )
+      return;
+    if (
+      current?.signed_payload &&
+      current.ap2_open_checkout_credential &&
+      current.ap2_open_payment_credential &&
+      (await signer.verify(current.signed_payload, current.canonical_payload))
+    )
+      return;
+    if (!current?.mandate_id)
+      throw new Error("Default demo intent exists without its mandate");
     const rotated = await mandateService.createVersion(
       demoUserId,
       current.mandate_id,
       specifications.authorizationSpecification,
     );
-    const nextVersion = Math.max(...rotated.versions.map((version) => version.version));
+    const nextVersion = Math.max(
+      ...rotated.versions.map((version) => version.version),
+    );
     await mandateService.authorize(demoUserId, current.mandate_id, nextVersion);
     return;
   }
 
-  const request = 'Buy one MEX to COR flight on September 15, 2026 under USD 150 with final approval.';
+  const request = `Buy one MEX to COR flight departing ${departureDate} under USD 150, valid until ${validUntilDate}, with final approval.`;
   await client.query(
     `INSERT INTO purchase_intents (
       id, user_id, agent_id, status, original_request, client_context, intent_draft,
@@ -157,7 +209,11 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
       demoUserId,
       demoAgentId,
       request,
-      { timeZone: 'America/Mexico_City', locale: 'en-US', observedAt: new Date().toISOString() },
+      {
+        timeZone: "America/Mexico_City",
+        locale: "en-US",
+        observedAt: new Date().toISOString(),
+      },
       draft,
       hashIntentDraft(draft),
       specifications.searchSpecification,
@@ -171,13 +227,23 @@ async function ensureDefaultDemoPurchase(): Promise<void> {
     [
       demoIntentId,
       request,
-      'Everything is ready. Your default demo mandate can now compare merchants safely.',
-      { type: 'SPECIFICATIONS_READY', missingFields: [] },
+      "Everything is ready. Your default demo mandate can now compare merchants safely.",
+      { type: "SPECIFICATIONS_READY", missingFields: [] },
     ],
   );
 
-  const created = await mandateService.createDraft(demoUserId, demoIntentId, 'AUTONOMOUS');
+  const created = await mandateService.createDraft(
+    demoUserId,
+    demoIntentId,
+    "AUTONOMOUS",
+  );
   await mandateService.authorize(demoUserId, created.mandate.id);
+}
+
+function futureDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromNow);
+  return date.toISOString().slice(0, 10);
 }
 
 async function ensureDemoMerchantOperator(): Promise<void> {
