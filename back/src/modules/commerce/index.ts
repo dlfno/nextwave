@@ -17,3 +17,4 @@ export {
   MockVuelaYaCommerceProvider,
   UnavailableCommerceProvider,
 } from './mock-vuelaya-commerce-provider.js';
+export { HttpUcpCommerceProvider, HttpUcpDiscoveryProvider } from './http-ucp-provider.js';

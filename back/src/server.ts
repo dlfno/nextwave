@@ -7,10 +7,18 @@ import { loadConfig } from './config.js';
 import { createDatabaseClient } from './database/client.js';
 import {
   Es256CheckoutSigner,
+  HttpUcpCommerceProvider,
+  HttpUcpDiscoveryProvider,
   MockAeroSurCommerceProvider,
   MockNubeViaCommerceProvider,
   MockVuelaYaCommerceProvider,
 } from './modules/commerce/index.js';
+import {
+  DiscoveryEngine,
+  MockAeroSurDiscoveryProvider,
+  MockNubeViaUcpDiscoveryProvider,
+  MockVuelaYaDiscoveryProvider,
+} from './modules/discovery/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
 import { OpenAIPurchasingAgentProvider } from './modules/purchase-intents/openai-purchasing-agent-provider.js';
 import { MockPurchasingAgentProvider } from './modules/purchase-intents/purchasing-agent-provider.js';
@@ -36,11 +44,21 @@ const checkoutSigner = await Es256CheckoutSigner.create(
   JSON.parse(checkoutSigningKey) as Record<string, unknown>,
   process.env.VUELAYA_SIGNING_KEY_ID ?? 'vuela-ya-checkout-1',
 );
+const nubeViaBaseUrl = process.env.NUBEVIA_UCP_BASE_URL;
 const commerceProviders = [
   new MockVuelaYaCommerceProvider(checkoutSigner),
   new MockAeroSurCommerceProvider(checkoutSigner),
-  new MockNubeViaCommerceProvider(checkoutSigner),
+  nubeViaBaseUrl
+    ? new HttpUcpCommerceProvider(nubeViaBaseUrl)
+    : new MockNubeViaCommerceProvider(checkoutSigner),
 ];
+const discoveryEngine = new DiscoveryEngine([
+  new MockVuelaYaDiscoveryProvider(),
+  new MockAeroSurDiscoveryProvider(),
+  nubeViaBaseUrl
+    ? new HttpUcpDiscoveryProvider(nubeViaBaseUrl)
+    : new MockNubeViaUcpDiscoveryProvider(),
+]);
 const agentProvider = config.openaiApiKey
   ? new OpenAIPurchasingAgentProvider({
       apiKey: config.openaiApiKey,
@@ -53,7 +71,9 @@ logger.info({
   clarificationModel: config.openaiClarificationModel,
   researchModel: config.openaiResearchModel,
 }, 'Purchasing agent configured');
-const app = createApp({ config, database, logger, mandateSigner, commerceProviders, agentProvider });
+const app = createApp({
+  config, database, logger, mandateSigner, discoveryEngine, commerceProviders, agentProvider,
+});
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'Nextwave API listening');

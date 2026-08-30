@@ -14,6 +14,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/back/dist ./dist
 COPY database /app/database
 COPY back/docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
-EXPOSE 3000
+COPY back/nubevia-entrypoint.sh ./nubevia-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh ./nubevia-entrypoint.sh
+EXPOSE 3000 3100
 CMD ["./docker-entrypoint.sh"]

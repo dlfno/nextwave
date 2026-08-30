@@ -30,13 +30,32 @@ services:
       OPENAI_CLARIFICATION_MODEL: ${OPENAI_CLARIFICATION_MODEL:-gpt-5.6-luna}
       OPENAI_RESEARCH_MODEL: ${OPENAI_RESEARCH_MODEL:-gpt-5.6-terra}
       OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-20000}
+      NUBEVIA_UCP_BASE_URL: http://nubevia:3100
     depends_on:
       postgres:
+        condition: service_healthy
+      nubevia:
         condition: service_healthy
     volumes:
       - nextwave_demo_secrets:/app/runtime-secrets
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  nubevia:
+    build:
+      context: .
+      dockerfile: back/Dockerfile
+    command: ["./nubevia-entrypoint.sh"]
+    environment:
+      NODE_ENV: production
+      PORT: 3100
+    volumes:
+      - nextwave_nubevia_secrets:/app/nubevia-secrets
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -57,3 +76,4 @@ services:
 volumes:
   nextwave_demo_data:
   nextwave_demo_secrets:
+  nextwave_nubevia_secrets:

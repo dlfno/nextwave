@@ -6,9 +6,10 @@
 docker compose -f compose.demo.yaml up --build
 ```
 
-Open `http://localhost:4000`. The stack starts PostgreSQL, applies migrations,
-creates ephemeral development ES256 keys, starts the Express API, and serves the
-Angular SSR application. On the first launch it also creates the judge accounts
+Open `http://localhost:4000`. The stack starts PostgreSQL, the separate NubeVia
+HTTP/UCP merchant, the Express API, and the Angular SSR application. It applies
+migrations and creates persistent development ES256 keys for both trusted-surface
+and merchant signatures. On the first launch it also creates the judge accounts
 below. Later container restarts preserve purchases until an explicit reset.
 
 ## Judge accounts
@@ -82,7 +83,7 @@ Reset only user-owned demo state while preserving the catalog and migrations:
 If a rehearsal fails:
 
 1. Run `docker compose -f compose.demo.yaml ps` and `./scripts/demo-status.sh`.
-2. Inspect `docker compose -f compose.demo.yaml logs --tail=100 api web postgres`.
+2. Inspect `docker compose -f compose.demo.yaml logs --tail=100 api web postgres nubevia`.
 3. Run `./scripts/demo-reset.sh`, reload the browser, and sign in again.
 4. If readiness remains red, restart with
    `docker compose -f compose.demo.yaml up -d --build`.
