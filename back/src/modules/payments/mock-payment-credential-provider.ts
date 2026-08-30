@@ -62,15 +62,3 @@ export class MockPaymentCredentialProvider implements PaymentCredentialProvider 
     return { providerReference: `mock-payment-${randomUUID()}`, processedAt: currentTime };
   }
 }
-
-export class StripeSPTProvider implements PaymentCredentialProvider {
-  readonly id = 'stripe-spt';
-
-  async issueCredential(): Promise<never> {
-    throw new HttpError(503, 'STRIPE_SPT_UNAVAILABLE', 'Stripe Shared Payment Tokens are not configured');
-  }
-
-  async consumeCredential(): Promise<never> {
-    throw new HttpError(503, 'STRIPE_SPT_UNAVAILABLE', 'Stripe Shared Payment Tokens are not configured');
-  }
-}

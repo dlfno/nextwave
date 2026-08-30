@@ -20,6 +20,7 @@ import {
   MockVuelaYaDiscoveryProvider,
 } from './modules/discovery/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
+import { MockPaymentCredentialProvider, StripeSPTProvider } from './modules/payments/index.js';
 import { OpenAIPurchasingAgentProvider } from './modules/purchase-intents/openai-purchasing-agent-provider.js';
 import { MockPurchasingAgentProvider } from './modules/purchase-intents/purchasing-agent-provider.js';
 
@@ -59,6 +60,13 @@ const discoveryEngine = new DiscoveryEngine([
     ? new HttpUcpDiscoveryProvider(nubeViaBaseUrl)
     : new MockNubeViaUcpDiscoveryProvider(),
 ]);
+const paymentCredentialProvider = config.paymentCredentialProvider === 'stripe-spt-test'
+  ? new StripeSPTProvider({
+      apiKey: config.stripeSecretKey!,
+      paymentMethod: config.stripeSptTestPaymentMethod ?? 'pm_card_visa',
+      timeoutMs: config.stripeTimeoutMs ?? 10_000,
+    })
+  : new MockPaymentCredentialProvider();
 const agentProvider = config.openaiApiKey
   ? new OpenAIPurchasingAgentProvider({
       apiKey: config.openaiApiKey,
@@ -72,7 +80,8 @@ logger.info({
   researchModel: config.openaiResearchModel,
 }, 'Purchasing agent configured');
 const app = createApp({
-  config, database, logger, mandateSigner, discoveryEngine, commerceProviders, agentProvider,
+  config, database, logger, mandateSigner, discoveryEngine, commerceProviders,
+  paymentCredentialProvider, agentProvider,
 });
 
 const server = app.listen(config.port, () => {

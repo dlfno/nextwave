@@ -192,6 +192,24 @@ completes the merchant checkout, and persists a transaction, confirmed order,
 line items, and signed receipt. Repeating execution for the same successful
 attempt returns the original result without issuing another credential.
 
+Milestone 19 adds an opt-in Stripe SPT test provider. Stripe currently documents
+Shared Payment Tokens as a private-preview feature, so the hackathon stack keeps
+`PAYMENT_CREDENTIAL_PROVIDER=mock` by default. If your Stripe account has access,
+put a test secret in the root `.env` (Compose) or `back/.env` (local API) and set:
+
+```dotenv
+PAYMENT_CREDENTIAL_PROVIDER=stripe-spt-test
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_SPT_TEST_PAYMENT_METHOD=pm_card_visa
+```
+
+The provider uses Stripe's test helper to obtain an amount-, currency-, seller-,
+and expiry-constrained SPT, then confirms one idempotent PaymentIntent. The SPT
+itself exists only in process memory during execution; PostgreSQL and audit events
+receive an internal reference and SHA-256 hash, never the bearer credential or a
+PaymentIntent client secret. If SPT preview access is absent, leave the provider
+set to `mock` so the full demo continues to work offline.
+
 ## Audit, records, and disputes
 
 Milestone 9 records security and commerce actions in an append-only SHA-256 hash

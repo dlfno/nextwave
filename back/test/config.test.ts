@@ -29,3 +29,27 @@ describe('OpenAI configuration', () => {
     expect(config.openaiResearchModel).toBe('gpt-5.6-terra');
   });
 });
+
+describe('Stripe SPT configuration', () => {
+  it('uses the mock credential provider unless Stripe is explicitly selected', () => {
+    const config = loadConfig(requiredEnvironment);
+    expect(config.paymentCredentialProvider).toBe('mock');
+    expect(config.stripeSecretKey).toBeUndefined();
+  });
+
+  it('requires a Stripe test secret when SPT test mode is selected', () => {
+    expect(() => loadConfig({
+      ...requiredEnvironment,
+      PAYMENT_CREDENTIAL_PROVIDER: 'stripe-spt-test',
+      STRIPE_SECRET_KEY: '',
+    })).toThrow();
+    expect(loadConfig({
+      ...requiredEnvironment,
+      PAYMENT_CREDENTIAL_PROVIDER: 'stripe-spt-test',
+      STRIPE_SECRET_KEY: 'sk_test_example',
+    })).toMatchObject({
+      paymentCredentialProvider: 'stripe-spt-test',
+      stripeSecretKey: 'sk_test_example',
+    });
+  });
+});

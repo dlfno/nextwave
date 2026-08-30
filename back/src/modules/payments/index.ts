@@ -1,4 +1,5 @@
-export { MockPaymentCredentialProvider, StripeSPTProvider } from './mock-payment-credential-provider.js';
+export { MockPaymentCredentialProvider } from './mock-payment-credential-provider.js';
+export { StripeSPTProvider } from './stripe-spt-provider.js';
 export { createPaymentRouter } from './payment-router.js';
 export { PaymentService } from './payment-service.js';
 export type {

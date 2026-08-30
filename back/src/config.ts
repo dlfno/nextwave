@@ -15,6 +15,20 @@ const environmentSchema = z.object({
   OPENAI_RESEARCH_MODEL: z.string().min(1).optional(),
   OPENAI_AGENT_MODEL: z.string().min(1).optional(),
   OPENAI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
+  PAYMENT_CREDENTIAL_PROVIDER: z.enum(['mock', 'stripe-spt-test']).default('mock'),
+  STRIPE_SECRET_KEY: z.preprocess(
+    (value) => value === '' ? undefined : value,
+    z.string().startsWith('sk_test_').optional(),
+  ),
+  STRIPE_SPT_TEST_PAYMENT_METHOD: z.string().min(1).default('pm_card_visa'),
+  STRIPE_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(10_000),
+}).superRefine((value, context) => {
+  if (value.PAYMENT_CREDENTIAL_PROVIDER === 'stripe-spt-test' && !value.STRIPE_SECRET_KEY) {
+    context.addIssue({
+      code: 'custom', path: ['STRIPE_SECRET_KEY'],
+      message: 'STRIPE_SECRET_KEY is required when Stripe SPT test mode is selected',
+    });
+  }
 });
 
 export interface AppConfig {
@@ -28,6 +42,10 @@ export interface AppConfig {
   openaiClarificationModel?: string;
   openaiResearchModel?: string;
   openaiTimeoutMs?: number;
+  paymentCredentialProvider?: 'mock' | 'stripe-spt-test';
+  stripeSecretKey?: string;
+  stripeSptTestPaymentMethod?: string;
+  stripeTimeoutMs?: number;
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -44,5 +62,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
     openaiClarificationModel: parsed.OPENAI_CLARIFICATION_MODEL ?? parsed.OPENAI_AGENT_MODEL ?? 'gpt-5.6-luna',
     openaiResearchModel: parsed.OPENAI_RESEARCH_MODEL ?? 'gpt-5.6-terra',
     openaiTimeoutMs: parsed.OPENAI_TIMEOUT_MS,
+    paymentCredentialProvider: parsed.PAYMENT_CREDENTIAL_PROVIDER,
+    ...(parsed.STRIPE_SECRET_KEY ? { stripeSecretKey: parsed.STRIPE_SECRET_KEY } : {}),
+    stripeSptTestPaymentMethod: parsed.STRIPE_SPT_TEST_PAYMENT_METHOD,
+    stripeTimeoutMs: parsed.STRIPE_TIMEOUT_MS,
   };
 }
