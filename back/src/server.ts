@@ -5,6 +5,7 @@ import pino from 'pino';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createDatabaseClient } from './database/client.js';
+import { Es256CheckoutSigner, MockVuelaYaCommerceProvider } from './modules/commerce/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
 
 const config = loadConfig();
@@ -22,7 +23,14 @@ const mandateSigner = await Es256MandateSigner.create(
   JSON.parse(signingKey) as Record<string, unknown>,
   process.env.MANDATE_SIGNING_KEY_ID ?? 'nextwave-trusted-surface-1',
 );
-const app = createApp({ config, database, logger, mandateSigner });
+const checkoutSigningKey = process.env.VUELAYA_SIGNING_PRIVATE_JWK;
+if (!checkoutSigningKey) throw new Error('VUELAYA_SIGNING_PRIVATE_JWK is required');
+const checkoutSigner = await Es256CheckoutSigner.create(
+  JSON.parse(checkoutSigningKey) as Record<string, unknown>,
+  process.env.VUELAYA_SIGNING_KEY_ID ?? 'vuela-ya-checkout-1',
+);
+const commerceProviders = [new MockVuelaYaCommerceProvider(checkoutSigner)];
+const app = createApp({ config, database, logger, mandateSigner, commerceProviders });
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'Nextwave API listening');

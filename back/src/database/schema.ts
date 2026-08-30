@@ -28,6 +28,11 @@ export const mandateVersionStatus = pgEnum('mandate_version_status', [
 ]);
 export const mandateMode = pgEnum('mandate_mode', ['HUMAN_PRESENT', 'AUTONOMOUS']);
 export const runStatus = pgEnum('run_status', ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED']);
+export const checkoutStatus = pgEnum('checkout_status', ['CREATED', 'READY', 'COMPLETED', 'EXPIRED', 'CANCELLED', 'FAILED']);
+export const purchaseAttemptStatus = pgEnum('purchase_attempt_status', [
+  'CREATED', 'QUOTED', 'DENIED', 'APPROVAL_REQUIRED', 'APPROVED', 'AUTHORIZED',
+  'CREDENTIAL_ISSUED', 'PAYMENT_SUBMITTED', 'SUCCEEDED', 'FAILED', 'CANCELLED',
+]);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -191,3 +196,59 @@ export const offers = pgTable('offers', {
   rawPayload: jsonb('raw_payload'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('offers_run_price_idx').on(table.discoveryRunId, table.currency, table.unitPriceMinor)]);
+
+export const quotes = pgTable('quotes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  offerId: uuid('offer_id').notNull().references(() => offers.id),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  providerQuoteId: text('provider_quote_id').notNull(),
+  totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  payload: jsonb('payload').notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
+export const purchaseAttempts = pgTable('purchase_attempts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  intentId: uuid('intent_id').notNull().references(() => purchaseIntents.id),
+  mandateId: uuid('mandate_id').notNull().references(() => mandates.id),
+  mandateVersionId: uuid('mandate_version_id').notNull().references(() => mandateVersions.id),
+  selectedOfferId: uuid('selected_offer_id').notNull().references(() => offers.id),
+  quoteId: uuid('quote_id').references(() => quotes.id),
+  status: purchaseAttemptStatus('status').notNull().default('CREATED'),
+  reasonCode: text('reason_code'),
+  correlationId: uuid('correlation_id').notNull().defaultRandom(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const checkoutSessions = pgTable('checkout_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attemptId: uuid('attempt_id').notNull().unique().references(() => purchaseAttempts.id, { onDelete: 'cascade' }),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  providerCheckoutId: text('provider_checkout_id').notNull(),
+  status: checkoutStatus('status').notNull().default('CREATED'),
+  totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  signedCheckout: text('signed_checkout').notNull(),
+  checkoutHash: bytea('checkout_hash').notNull().unique(),
+  rawPayload: jsonb('raw_payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+});
+
+export const checkoutLineItems = pgTable('checkout_line_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  checkoutId: uuid('checkout_id').notNull().references(() => checkoutSessions.id, { onDelete: 'cascade' }),
+  merchantProductId: text('merchant_product_id').notNull(),
+  productId: uuid('product_id').references(() => products.id),
+  productName: text('product_name').notNull(),
+  category: text('category').notNull(),
+  quantity: integer('quantity').notNull(),
+  unitPriceMinor: bigint('unit_price_minor', { mode: 'bigint' }).notNull(),
+  totalMinor: bigint('total_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+});

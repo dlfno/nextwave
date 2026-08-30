@@ -102,6 +102,21 @@ ranked, and persisted. Every offer response includes `authoritative: false`:
 discovery prices are evidence for comparison only. Milestone 6 must obtain a live
 merchant quote and checkout before mandate evaluation or payment.
 
+## Authoritative checkout
+
+Milestone 6 adds the merchant commerce boundary and these endpoints:
+
+- `POST /api/v1/purchase-intents/:intentId/select-offer`
+- `POST /api/v1/purchase-intents/:intentId/purchase-attempts`
+- `GET /api/v1/purchase-attempts/:attemptId`
+
+Both command endpoints accept `{ "offerId": "..." }` and create a purchase
+attempt from a fresh VuelaYa quote and merchant-signed checkout. The response
+shows `priceDriftMinor` between discovery and the authoritative quote. Checkout
+evidence is ES256-signed with a merchant-specific key and bound to the exact
+attempt, quote, offer, mandate version, merchant, amount, currency, and expiry.
+Configure `VUELAYA_SIGNING_PRIVATE_JWK` separately from the mandate key.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:
