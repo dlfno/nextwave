@@ -10,7 +10,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <nav aria-label="Primary navigation">
         <a routerLink="/agent" routerLinkActive="active">Agent</a>
         <a routerLink="/intent" routerLinkActive="active">Intent</a>
-        <button type="button" disabled title="Available in the next milestone">Mandates</button>
+        <a routerLink="/mandates" routerLinkActive="active">Mandates</a>
         <button type="button" disabled title="Available in a later milestone">Activity</button>
       </nav>
       <a class="account" routerLink="/auth"><span>MP</span><b>{{ userName() }}</b></a>

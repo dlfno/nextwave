@@ -26,7 +26,8 @@
         <div><span>Final approval</span><strong>Not decided</strong><small>Needs confirmation</small></div>
       </section>
       <div class="boundary"><span>Deterministic boundary</span><p>This conversation shapes the mandate. It never approves payment.</p></div>
-      <button class="primary-button review" [disabled]="!ready()">{{ ready() ? 'Review mandate' : 'Finish clarification first' }} <span>↗</span></button>
+      @if (reviewError()) { <p class="field-error" role="alert">{{ reviewError() }}</p> }
+      <button class="primary-button review" [disabled]="(!ready() && !!intentId()) || reviewBusy()" (click)="reviewMandate()">{{ reviewBusy() ? 'Preparing mandate…' : ready() || !intentId() ? 'Review mandate' : 'Finish clarification first' }} <span>↗</span></button>
     </aside>
   </div>
 </main>

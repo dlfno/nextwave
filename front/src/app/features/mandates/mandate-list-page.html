@@ -1,0 +1,25 @@
+<main class="page-shell">
+  <app-nav />
+  <section class="mandates-page">
+    <header class="page-head"><div><p class="eyebrow">Delegated authority</p><h1>Your mandates</h1><p>See exactly what each agent can purchase, change future authority through a new version, or revoke access instantly.</p></div><a class="primary-button" routerLink="/intent">New intent <span>↗</span></a></header>
+    @if (demo()) { <div class="demo-banner"><strong>Demo presentation</strong><span>Connect the Express API and sign in to manage persisted mandates.</span></div> }
+    <div class="summary"><div><span>Active authority</span><strong>{{ mandates().length }}</strong></div><div><span>Revoked</span><strong>0</strong></div><div><span>Agents covered</span><strong>1</strong></div></div>
+    @if (loading()) {
+      <div class="skeleton" aria-label="Loading mandates"><i></i><i></i><i></i></div>
+    } @else if (!mandates().length) {
+      <div class="empty"><div class="empty-orbit">+</div><h2>No mandates yet</h2><p>Start with a purchase intention. Your agent will clarify it before you authorize anything.</p><a class="primary-button" routerLink="/intent">Create an intent</a></div>
+    } @else {
+      <div class="mandate-grid">
+        @for (mandate of mandates(); track mandate.id) {
+          <a class="mandate-row" [routerLink]="['/mandates', mandate.id]">
+            <div class="route"><span class="origin">MEX</span><i></i><span class="destination">COR</span></div>
+            <div class="description"><span>Flight purchase</span><strong>Mexico City to Córdoba</strong><small>Personal purchasing agent</small></div>
+            <div class="limit"><span>Maximum</span><strong>$150 USD</strong></div>
+            <div class="expires"><span>Valid until</span><strong>{{ mandate.expiresAt | date:'MMM d, y' }}</strong></div>
+            <span class="status" [class.revoked]="mandate.status === 'REVOKED'">{{ mandate.status }}</span><b class="arrow">↗</b>
+          </a>
+        }
+      </div>
+    }
+  </section>
+</main>
