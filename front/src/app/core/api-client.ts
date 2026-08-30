@@ -23,9 +23,24 @@ export interface IntentMessage {
   id?: string;
   role: 'USER' | 'AGENT';
   content: string;
+  structuredPayload?: {
+    type?: string;
+    missingFields?: string[];
+    [key: string]: unknown;
+  } | null;
+}
+export interface FlightIntentDraft {
+  origin: { city: string; iata: string } | null;
+  destination: { city: string; country: string; iata: string } | null;
+  departureDate: string | null;
+  passengers: number | null;
+  maxTotalMinor: string | null;
+  currency: string | null;
+  validUntil: string | null;
+  requiresFinalConfirmation: boolean | null;
 }
 export interface PurchaseIntentResult {
-  intent: { id: string; status: string };
+  intent: { id: string; status: string; intentDraft?: FlightIntentDraft | null };
   messages: IntentMessage[];
 }
 export interface PurchaseIntentSummary {
@@ -308,7 +323,7 @@ export class ApiClient {
   addIntentMessage(
     intentId: string,
     content: string,
-  ): Observable<{ status: string; ready: boolean; messages: IntentMessage[] }> {
+  ): Observable<{ status: string; ready: boolean; intentDraft: FlightIntentDraft; messages: IntentMessage[] }> {
     return this.request('post', `/purchase-intents/${intentId}/messages`, { content });
   }
 

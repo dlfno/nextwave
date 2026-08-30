@@ -10,3 +10,21 @@ article { max-width:76%; border-radius:19px; padding:14px 17px; }article>span { 
 @media(max-width:900px){.workspace{grid-template-columns:1fr;min-height:calc(100dvh - 120px)}.conversation,.context{border:0;padding-bottom:95px}.mobile-hidden{display:none}.mobile-tabs{display:flex;padding:9px 18px;border-bottom:1px solid var(--line);background:white}.mobile-tabs button{flex:1;border:0;border-radius:999px;padding:10px;color:var(--muted);background:transparent;font-size:12px;font-weight:700}.mobile-tabs button.active{color:white;background:var(--ink)}.context{min-height:calc(100dvh - 118px)}.review{margin-top:20px}}
 @media(max-width:900px){.agent-shell{height:auto;min-height:100dvh;overflow:visible}.workspace{height:auto;overflow:visible}.conversation{overflow:visible}.context{overflow:visible}}
 @media(max-width:560px){.conversation-head{align-items:center}.live{font-size:0}.conversation-head h1{font-size:37px}.messages{padding-top:32px}article{max-width:89%}.composer>div>span{display:none}.constraint-list{grid-template-columns:1fr 1fr}}
+
+.draft.authorized { border-color: rgba(22,133,106,.2); color: var(--mint); background: rgba(22,133,106,.07); }
+.completeness { display: grid; gap: 7px; }
+.completeness > span { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(15,36,66,.09); }
+.completeness i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--blue),#7193ee); transition: width 360ms cubic-bezier(.2,.8,.2,1); }
+.completeness small { color: var(--muted); font-size: 9px; }
+.constraint-list > div { min-height: 100px; }
+.constraint-list > div.pending { border-style: dashed; background: rgba(255,255,255,.38); }
+.constraint-list strong { font-size: 12px; }
+
+@media (min-width: 901px) {
+  .context { gap: 14px; padding-top: 28px; padding-bottom: 28px; }
+  .context h2 { font-size: 24px; }
+  .route-map { padding-block: 12px; }
+  .intent-card { padding: 16px; }
+  .constraint-list > div { min-height: 82px; padding: 12px; }
+  .boundary { padding: 10px 12px; }
+}

@@ -146,6 +146,7 @@ export class PurchaseIntentService {
       return {
         status,
         ready: clarification.ready,
+        intentDraft: clarification.draft,
         messages: [storedUserMessage, storedAgentMessage],
       };
     });

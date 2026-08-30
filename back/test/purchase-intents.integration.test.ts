@@ -120,6 +120,13 @@ describe.skipIf(!databaseUrl)('purchase intent conversation and specifications',
       .expect(201);
 
     expect(clarified.body).toMatchObject({ status: 'READY_FOR_MANDATE', ready: true });
+    expect(clarified.body.intentDraft).toMatchObject({
+      origin: { iata: 'MEX' },
+      destination: { iata: 'COR' },
+      maxTotalMinor: '15000',
+      currency: 'USD',
+      requiresFinalConfirmation: false,
+    });
 
     const finalized = await user.client
       .post(`/api/v1/purchase-intents/${intentId}/finalize-specifications`)
