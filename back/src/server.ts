@@ -7,6 +7,8 @@ import { loadConfig } from './config.js';
 import { createDatabaseClient } from './database/client.js';
 import { Es256CheckoutSigner, MockVuelaYaCommerceProvider } from './modules/commerce/index.js';
 import { Es256MandateSigner } from './modules/mandates/mandate-signer.js';
+import { OpenAIPurchasingAgentProvider } from './modules/purchase-intents/openai-purchasing-agent-provider.js';
+import { MockPurchasingAgentProvider } from './modules/purchase-intents/purchasing-agent-provider.js';
 
 const config = loadConfig();
 const logger = pino({
@@ -30,7 +32,15 @@ const checkoutSigner = await Es256CheckoutSigner.create(
   process.env.VUELAYA_SIGNING_KEY_ID ?? 'vuela-ya-checkout-1',
 );
 const commerceProviders = [new MockVuelaYaCommerceProvider(checkoutSigner)];
-const app = createApp({ config, database, logger, mandateSigner, commerceProviders });
+const agentProvider = config.openaiApiKey
+  ? new OpenAIPurchasingAgentProvider({
+      apiKey: config.openaiApiKey,
+      model: config.openaiAgentModel ?? 'gpt-5.6-terra',
+      timeoutMs: config.openaiTimeoutMs ?? 20_000,
+    })
+  : new MockPurchasingAgentProvider();
+logger.info({ provider: agentProvider instanceof OpenAIPurchasingAgentProvider ? agentProvider.id : 'mock' }, 'Purchasing agent configured');
+const app = createApp({ config, database, logger, mandateSigner, commerceProviders, agentProvider });
 
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port }, 'Nextwave API listening');

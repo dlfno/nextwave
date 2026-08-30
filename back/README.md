@@ -23,6 +23,28 @@ npm run dev
 
 The API listens on port 3000 by default. `GET /health` is unauthenticated.
 
+## OpenAI purchasing agent
+
+The real agent uses the OpenAI Responses API with Structured Outputs. Paste the
+API key into `OPENAI_API_KEY` in `back/.env` for local development. When the key
+is absent, the backend deliberately falls back to the deterministic mock provider
+so tests and offline rehearsals remain usable.
+
+```dotenv
+OPENAI_API_KEY=sk-...
+OPENAI_AGENT_MODEL=gpt-5.6-terra
+OPENAI_TIMEOUT_MS=20000
+```
+
+When running `compose.demo.yaml`, put the key in the repository-root `.env`
+instead. The key is passed only to the Express API container and is never bundled
+into Angular. Both `.env` files are ignored by Git; restart the API after changing
+one.
+
+The LLM clarifies intent and produces separate structured search and authorization
+specifications. It does not approve mandates, issue payment credentials, or run
+the deterministic mandate engine.
+
 ## Purchase intent conversation
 
 Milestone 2 exposes:
@@ -33,8 +55,8 @@ Milestone 2 exposes:
 - `POST /api/v1/purchase-intents/:intentId/messages`
 - `POST /api/v1/purchase-intents/:intentId/finalize-specifications`
 
-The P0 agent provider is deterministic and intentionally limited to the VuelaYa
-flight demo. It clarifies origin, Córdoba country/airport, departure date,
+The offline fallback provider is deterministic and intentionally limited to the
+VuelaYa flight demo. Both providers clarify origin, Córdoba country/airport, departure date,
 passenger count, price currency, mandate validity, and final-confirmation policy.
 For example:
 
