@@ -738,9 +738,9 @@
 
    Protocol                Responsibility                                             Hackathon implementation
   ━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   AP2                     Open/closed checkout and payment authorization evidence    AP2-shaped ES256 evidence; full SD-JWT deferred
+   AP2                     Open/closed checkout and payment authorization evidence    Signed open credentials and checkout-bound closed mandate presentation
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
-   UCP                     Merchant checkout lifecycle                                UCP-shaped in-process VuelaYa adapter
+   UCP                     Merchant checkout lifecycle                                UCP 2026-04-08 REST + AP2 extension against external NubeVia simulator
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
    ACP                     Future alternate commerce adapter                          Interface only
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
@@ -750,7 +750,7 @@
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
    MCP                     Optional external agent tools                              P2
   ──────────────────────  ─────────────────────────────────────────────────────────  ─────────────────────────────────────────────────
-   Crawling                Discovery fallback only                                    P2; never authoritative
+   Crawling                Discovery fallback only                                    Next milestone; never authoritative
 
   ## 11. Milestones
 

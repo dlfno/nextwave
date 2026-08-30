@@ -141,7 +141,7 @@ export class MockVuelaYaCommerceProvider implements CommerceProvider {
 
   async completeCheckout(request: CompleteCheckoutRequest) {
     if (request.merchantId !== this.merchantId || request.amountMinor < 0n
-      || request.currency !== 'USD' || !request.credentialReference) {
+      || request.currency !== 'USD' || !request.credentialReference || !request.ap2CheckoutMandate) {
       throw new HttpError(409, 'MERCHANT_PAYMENT_REJECTED', 'Merchant rejected the payment scope');
     }
     return { merchantOrderId: `${this.options.orderPrefix}-ORDER-${randomUUID()}`, completedAt: new Date() };

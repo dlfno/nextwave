@@ -73,6 +73,21 @@ export function createApp({
   app.use(requireAllowedOrigin(config.frontendOrigin));
 
   app.get('/health', (_request, response) => response.json({ status: 'ok' }));
+  app.get('/.well-known/ucp', (_request, response) => {
+    const keys = [ap2TrustedIssuer?.publicJwk(), ap2AgentIssuer?.publicJwk()].filter(Boolean);
+    response.json({
+      ucp: {
+        version: '2026-04-08', services: {},
+        capabilities: {
+          'dev.ucp.shopping.checkout': [{ version: '2026-04-08' }],
+          'dev.ucp.common.payment.ap2_mandate': [{
+            version: '2026-04-08', extends: 'dev.ucp.shopping.checkout',
+            config: { vp_formats_supported: { 'dc+sd-jwt': {} } },
+          }],
+        }, payment_handlers: {},
+      }, keys,
+    });
+  });
   app.get('/ready', async (_request, response) => {
     const checks = {
       database: false,

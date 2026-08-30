@@ -18,9 +18,11 @@ import {
   mandateVersions,
   purchaseAttempts,
   purchaseIntents,
+  quotes,
 } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
 import type { CommerceProvider } from '../commerce/commerce-types.js';
+import { checkoutPayloadBound } from '../commerce/checkout-binding.js';
 import type { MandateSigner } from '../mandates/mandate-signer.js';
 import { DeterministicMandateEngine } from '../policy-engine/mandate-engine.js';
 import type { HumanApprovalEvidence, MandateDecision, MandateEvaluationInput } from '../policy-engine/policy-types.js';
@@ -34,6 +36,7 @@ interface LoadedAttempt {
   checkout: typeof checkoutSessions.$inferSelect;
   lineItems: (typeof checkoutLineItems.$inferSelect)[];
   approval: typeof humanApprovals.$inferSelect | undefined;
+  quote: typeof quotes.$inferSelect;
 }
 
 export class PurchaseAuthorizationService {
@@ -165,17 +168,32 @@ export class PurchaseAuthorizationService {
       expiresAt: loaded.checkout.expiresAt,
     }) && createHash('sha256').update(canonicalize(payload), 'utf8').digest()
       .equals(loaded.checkout.checkoutHash) : false;
-    const signatureValid = checkoutEvidenceValid
-      && payload.providerCheckoutId === loaded.checkout.providerCheckoutId
-      && payload.attemptId === loaded.attempt.id
-      && payload.quoteId === loaded.checkout.quoteId
-      && payload.offerId === loaded.attempt.selectedOfferId
-      && payload.mandateId === loaded.attempt.mandateId
-      && payload.mandateVersionId === loaded.attempt.mandateVersionId
-      && payload.merchantId === loaded.checkout.merchantId
-      && payload.totalMinor === loaded.checkout.totalMinor.toString()
-      && payload.currency === loaded.checkout.currency
-      && payload.expiresAt === loaded.checkout.expiresAt.toISOString();
+    const signatureValid = checkoutEvidenceValid && checkoutPayloadBound(payload, {
+      providerCheckoutId: loaded.checkout.providerCheckoutId,
+      expiresAt: loaded.checkout.expiresAt,
+    }, {
+      attemptId: loaded.attempt.id, quoteId: loaded.checkout.quoteId,
+      offerId: loaded.attempt.selectedOfferId, mandateId: loaded.attempt.mandateId,
+      mandateVersionId: loaded.attempt.mandateVersionId,
+      quote: {
+        providerQuoteId: loaded.quote.providerQuoteId,
+        offerId: loaded.quote.offerId,
+        merchantId: loaded.quote.merchantId,
+        totalMinor: loaded.quote.totalMinor,
+        currency: loaded.quote.currency,
+        lineItems: loaded.lineItems.map((item) => ({
+          merchantProductId: item.merchantProductId, productId: item.productId,
+          productName: item.productName, category: item.category,
+          ...(item.originIata ? { originIata: item.originIata } : {}),
+          ...(item.destinationIata ? { destinationIata: item.destinationIata } : {}),
+          ...(item.departureDate ? { departureDate: item.departureDate } : {}),
+          quantity: item.quantity, unitPriceMinor: item.unitPriceMinor,
+          totalMinor: item.totalMinor, currency: item.currency,
+        })),
+        observedAt: loaded.quote.observedAt, expiresAt: loaded.quote.expiresAt,
+        payload: loaded.quote.payload as Record<string, unknown>,
+      },
+    });
     const mandateSignatureValid = loaded.version.signedPayload !== null
       && await this.mandateSigner.verify(
         loaded.version.signedPayload,
@@ -288,11 +306,13 @@ export class PurchaseAuthorizationService {
       mandate: mandates,
       version: mandateVersions,
       checkout: checkoutSessions,
+      quote: quotes,
     }).from(purchaseAttempts)
       .innerJoin(purchaseIntents, eq(purchaseIntents.id, purchaseAttempts.intentId))
       .innerJoin(mandates, eq(mandates.id, purchaseAttempts.mandateId))
       .innerJoin(mandateVersions, eq(mandateVersions.id, purchaseAttempts.mandateVersionId))
       .innerJoin(checkoutSessions, eq(checkoutSessions.attemptId, purchaseAttempts.id))
+      .innerJoin(quotes, eq(quotes.id, purchaseAttempts.quoteId))
       .where(and(eq(purchaseAttempts.id, attemptId), eq(purchaseIntents.userId, userId))).limit(1);
     if (!record) throw new HttpError(404, 'PURCHASE_ATTEMPT_NOT_FOUND', 'Purchase attempt not found');
     const [lineItems, approvals] = await Promise.all([

@@ -224,6 +224,7 @@ export class PaymentService {
         currency: loaded.checkout.currency,
         credentialProvider: credential.provider,
         credentialReference: credential.providerReference,
+        ap2CheckoutMandate: ap2Presentation.compact,
       });
       const orderId = randomUUID();
       const receiptId = randomUUID();

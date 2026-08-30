@@ -1,5 +1,5 @@
 import { canonicalize } from 'json-canonicalize';
-import { compactVerify, importJWK, type JWK } from 'jose';
+import { compactVerify, flattenedVerify, importJWK, type JWK } from 'jose';
 import { z } from 'zod';
 
 import { HttpError } from '../../shared/http-error.js';
@@ -30,7 +30,6 @@ const lineItemSchema = z.object({
 }).strict();
 
 const searchResponseSchema = z.object({
-  ucpVersion: z.string().min(1),
   offers: z.array(discoveredOfferSchema.omit({
     providerId: true,
     merchantId: true,
@@ -43,7 +42,6 @@ const searchResponseSchema = z.object({
 }).strict();
 
 const quoteResponseSchema = z.object({
-  ucpVersion: z.string().min(1),
   providerQuoteId: z.string().min(1),
   offerId: z.uuid(),
   merchantId: z.literal(NUBEVIA_MERCHANT_ID),
@@ -56,24 +54,31 @@ const quoteResponseSchema = z.object({
 }).strict();
 
 const checkoutResponseSchema = z.object({
-  providerCheckoutId: z.string().min(1),
-  payload: z.record(z.string(), z.unknown()),
+  payload: z.object({
+    ucp: z.object({ version: z.literal('2026-04-08'), status: z.literal('success') }).passthrough(),
+    id: z.string().min(1), status: z.literal('ready_for_complete'), currency: z.string().regex(/^[A-Z]{3}$/),
+    line_items: z.array(z.unknown()).min(1), totals: z.array(z.unknown()).min(2),
+    links: z.array(z.unknown()).min(1), expires_at: z.iso.datetime(),
+    ap2: z.object({ merchant_authorization: z.string().regex(/^[A-Za-z0-9_-]+\.\.[A-Za-z0-9_-]+$/) }).strict(),
+  }).passthrough(),
   payloadHash: z.string().min(1),
   signedPayload: z.string().min(1),
-  expiresAt: z.iso.datetime(),
 }).strict();
 
 const completionResponseSchema = z.object({
-  merchantOrderId: z.string().min(1),
-  completedAt: z.iso.datetime(),
-}).strict();
+  ucp: z.object({ version: z.literal('2026-04-08'), status: z.literal('success') }).passthrough(),
+  id: z.string().min(1), status: z.literal('completed'),
+  order: z.object({ id: z.string().min(1), permalink_url: z.string().url() }).passthrough(),
+  completed_at: z.iso.datetime(),
+}).passthrough();
 
-const jwksSchema = z.object({
+const profileSchema = z.object({
+  ucp: z.object({ version: z.literal('2026-04-08'), capabilities: z.record(z.string(), z.unknown()) }).passthrough(),
   keys: z.array(z.object({
     kty: z.literal('EC'), crv: z.literal('P-256'), x: z.string(), y: z.string(),
     kid: z.string(), alg: z.literal('ES256'), use: z.literal('sig'),
   }).passthrough()).min(1),
-}).strict();
+}).passthrough();
 
 type ImportedKey = Awaited<ReturnType<typeof importJWK>>;
 
@@ -113,7 +118,7 @@ class UcpHttpClient {
 }
 
 export class HttpUcpDiscoveryProvider implements DiscoveryProvider {
-  readonly id = 'http-nubevia-ucp';
+  readonly id = 'http-nubevia-merchant-api';
   private readonly client: UcpHttpClient;
 
   constructor(baseUrl: string, timeoutMs = 2_500) {
@@ -121,7 +126,7 @@ export class HttpUcpDiscoveryProvider implements DiscoveryProvider {
   }
 
   async search(specification: SearchSpecification, context: DiscoveryContext) {
-    const result = await this.client.post('/ucp/v1/search', {
+    const result = await this.client.post('/merchant/v1/search', {
       specification,
       observedAt: context.observedAt.toISOString(),
     }, searchResponseSchema);
@@ -129,8 +134,8 @@ export class HttpUcpDiscoveryProvider implements DiscoveryProvider {
       ...offer,
       providerId: this.id,
       merchantId: NUBEVIA_MERCHANT_ID,
-      sourceType: 'UCP' as const,
-      sourceReference: `ucp://nubevia/${offer.merchantProductId}`,
+      sourceType: 'MERCHANT_API' as const,
+      sourceReference: `merchant-api://nubevia/${offer.merchantProductId}`,
       observedAt: context.observedAt.toISOString(),
       confidence: 1,
       supportsAuthoritativeCheckout: true,
@@ -143,6 +148,7 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
   readonly merchantId = NUBEVIA_MERCHANT_ID;
   private readonly client: UcpHttpClient;
   private publicKey?: ImportedKey;
+  private profileLoaded = false;
 
   constructor(baseUrl: string, timeoutMs = 2_500) {
     this.client = new UcpHttpClient(baseUrl.replace(/\/$/, ''), timeoutMs);
@@ -152,7 +158,7 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
     if (offer.merchantId !== this.merchantId) {
       throw new HttpError(400, 'COMMERCE_MERCHANT_MISMATCH', 'Offer belongs to another merchant');
     }
-    const quote = await this.client.post('/ucp/v1/quotes', {
+    const quote = await this.client.post('/merchant/v1/quotes', {
       offer: { ...offer, discoveredUnitPriceMinor: offer.discoveredUnitPriceMinor.toString() },
       currentTime: currentTime.toISOString(),
     }, quoteResponseSchema);
@@ -174,25 +180,18 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
   }
 
   async createCheckout(request: CreateCheckoutRequest): Promise<SignedCheckout> {
-    const checkout = await this.client.post('/ucp/v1/checkouts', {
-      ...request,
-      currentTime: request.currentTime.toISOString(),
-      quote: {
-        ...request.quote,
-        totalMinor: request.quote.totalMinor.toString(),
-        observedAt: request.quote.observedAt.toISOString(),
-        expiresAt: request.quote.expiresAt.toISOString(),
-        lineItems: request.quote.lineItems.map((item) => ({
-          ...item,
-          unitPriceMinor: item.unitPriceMinor.toString(),
-          totalMinor: item.totalMinor.toString(),
-        })),
-      },
+    await this.verificationKey();
+    const checkout = await this.client.post('/checkout-sessions', {
+      line_items: request.quote.lineItems.map((item) => ({
+        item: { id: item.merchantProductId }, quantity: item.quantity,
+      })),
     }, checkoutResponseSchema);
     return {
-      ...checkout,
+      providerCheckoutId: checkout.payload.id,
+      payload: checkout.payload,
       payloadHash: Buffer.from(checkout.payloadHash, 'base64url'),
-      expiresAt: new Date(checkout.expiresAt),
+      signedPayload: checkout.signedPayload,
+      expiresAt: new Date(checkout.payload.expires_at),
     };
   }
 
@@ -201,25 +200,53 @@ export class HttpUcpCommerceProvider implements CommerceProvider {
       const verified = await compactVerify(checkout.signedPayload, await this.verificationKey(), {
         algorithms: ['ES256'],
       });
-      return verified.protectedHeader.typ === 'application/nextwave-checkout+jws'
-        && Buffer.from(verified.payload).equals(Buffer.from(canonicalize(checkout.payload), 'utf8'));
+      if (verified.protectedHeader.typ !== 'application/nextwave-checkout+jws'
+        || !Buffer.from(verified.payload).equals(Buffer.from(canonicalize(checkout.payload), 'utf8'))) return false;
+      const parsed = checkoutResponseSchema.shape.payload.safeParse(checkout.payload);
+      if (!parsed.success) return false;
+      const { ap2, ...unsignedCheckout } = parsed.data;
+      return this.verifyMerchantAuthorization(ap2.merchant_authorization, unsignedCheckout);
     } catch {
       return false;
     }
   }
 
   async completeCheckout(request: CompleteCheckoutRequest) {
-    const result = await this.client.post(`/ucp/v1/checkouts/${encodeURIComponent(request.providerCheckoutId)}/complete`, {
-      ...request,
-      amountMinor: request.amountMinor.toString(),
+    const result = await this.client.post(`/checkout-sessions/${encodeURIComponent(request.providerCheckoutId)}/complete`, {
+      payment: { instruments: [{
+        id: request.credentialReference, handler_id: request.credentialProvider,
+        type: 'tokenized', selected: true,
+        display: { description: 'Constrained agent payment credential' },
+        credential: { type: 'PAYMENT_GATEWAY', token: request.ap2CheckoutMandate },
+      }] },
+      ap2: { checkout_mandate: request.ap2CheckoutMandate },
     }, completionResponseSchema);
-    return { ...result, completedAt: new Date(result.completedAt) };
+    return { merchantOrderId: result.order.id, completedAt: new Date(result.completed_at) };
   }
 
   private async verificationKey(): Promise<ImportedKey> {
     if (this.publicKey) return this.publicKey;
-    const jwks = await this.client.get('/.well-known/jwks.json', jwksSchema);
-    this.publicKey = await importJWK(jwks.keys[0] as JWK, 'ES256');
+    const profile = await this.client.get('/.well-known/ucp', profileSchema);
+    if (!('dev.ucp.shopping.checkout' in profile.ucp.capabilities)
+      || !('dev.ucp.common.payment.ap2_mandate' in profile.ucp.capabilities)) {
+      throw new HttpError(502, 'UCP_CAPABILITY_NOT_NEGOTIATED', 'NubeVia does not advertise checkout with AP2 mandates');
+    }
+    this.profileLoaded = true;
+    this.publicKey = await importJWK(profile.keys[0] as JWK, 'ES256');
     return this.publicKey;
+  }
+
+  private async verifyMerchantAuthorization(signature: string, payload: Readonly<Record<string, unknown>>) {
+    if (!this.profileLoaded) await this.verificationKey();
+    const [protectedHeader, emptyPayload, encodedSignature] = signature.split('.');
+    if (!protectedHeader || emptyPayload !== '' || !encodedSignature) return false;
+    try {
+      await flattenedVerify({ protected: protectedHeader,
+        payload: Buffer.from(canonicalize(payload), 'utf8').toString('base64url'), signature: encodedSignature },
+      await this.verificationKey(), { algorithms: ['ES256'] });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

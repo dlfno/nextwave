@@ -11,5 +11,8 @@ describe('Es256CheckoutSigner', () => {
 
     expect(await signer.verify(evidence.signedPayload, evidence.payload)).toBe(true);
     expect(await signer.verify(evidence.signedPayload, { ...evidence.payload, amount: '30000' })).toBe(false);
+    const detached = await signer.signDetached(evidence.payload);
+    expect(await signer.verifyDetached(detached, evidence.payload)).toBe(true);
+    expect(await signer.verifyDetached(detached, { ...evidence.payload, amount: '30000' })).toBe(false);
   });
 });

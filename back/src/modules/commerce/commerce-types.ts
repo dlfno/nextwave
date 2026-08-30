@@ -60,6 +60,7 @@ export interface CompleteCheckoutRequest {
   readonly currency: string;
   readonly credentialProvider: string;
   readonly credentialReference: string;
+  readonly ap2CheckoutMandate: string;
 }
 
 export interface CheckoutCompletion {

@@ -152,11 +152,18 @@ ranked, and persisted. Every offer response includes `authoritative: false`:
 discovery prices are evidence for comparison only. Milestone 6 must obtain a live
 merchant quote and checkout before mandate evaluation or payment.
 
-Milestone 18 moves NubeVia behind a separately running HTTP UCP boundary. In the
+Milestone 20 upgrades NubeVia to the UCP `2026-04-08` REST checkout and AP2
+Mandates Extension boundary. In the
 container demo, Compose starts the merchant automatically and configures
 `NUBEVIA_UCP_BASE_URL=http://nubevia:3100`. NubeVia owns its catalog, authoritative
-quote, checkout state, and persistent ES256 signing key. The API validates all
-responses and verifies signed checkouts against the merchant JWKS endpoint. For a
+quote, checkout state, and persistent ES256 signing key. It advertises checkout
+and `dev.ucp.common.payment.ap2_mandate` at `/.well-known/ucp`; Nextwave negotiates
+those capabilities, verifies the detached `ap2.merchant_authorization`, and sends
+the closed `ap2.checkout_mandate` on `complete_checkout`. NubeVia independently
+verifies the mandate signature, expiry, merchant, amount, currency, and exact
+merchant-signed checkout hash before creating an order. Product search and quote
+refresh remain explicitly merchant-specific APIs because UCP checkout—not scraped
+or discovery data—is the authoritative purchase boundary. For a
 manual local run, configure `NUBEVIA_SIGNING_PRIVATE_JWK`, start
 `npm run dev:nubevia`, and point the API at `http://localhost:3100`; leaving the
 base URL empty retains the deterministic in-process fallback.

@@ -18,6 +18,7 @@ import {
 } from '../../database/schema.js';
 import { HttpError } from '../../shared/http-error.js';
 import type { AuthoritativeQuote, CommerceProvider, SignedCheckout } from './commerce-types.js';
+import { checkoutPayloadBound } from './checkout-binding.js';
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
@@ -222,15 +223,7 @@ export class CheckoutService {
       throw new HttpError(502, 'CHECKOUT_HASH_INVALID', 'Merchant checkout hash is invalid');
     }
     const payload = checkout.payload;
-    const bound = payload.providerCheckoutId === checkout.providerCheckoutId
-      && payload.attemptId === expected.attemptId && payload.quoteId === expected.quoteId
-      && payload.providerQuoteId === expected.quote.providerQuoteId
-      && payload.offerId === expected.offerId && payload.mandateId === expected.mandateId
-      && payload.mandateVersionId === expected.mandateVersionId
-      && payload.merchantId === expected.quote.merchantId
-      && payload.totalMinor === expected.quote.totalMinor.toString()
-      && payload.currency === expected.quote.currency
-      && payload.expiresAt === checkout.expiresAt.toISOString();
+    const bound = checkoutPayloadBound(payload, checkout, expected);
     if (!bound) throw new HttpError(502, 'CHECKOUT_BINDING_MISMATCH', 'Merchant checkout is not bound to this purchase');
     if (checkout.expiresAt.getTime() <= now.getTime()) {
       throw new HttpError(409, 'CHECKOUT_EXPIRED', 'Merchant checkout is expired');
