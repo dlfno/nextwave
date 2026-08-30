@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../db');
-const { createMandate } = require('../services/mandates');
+const { createMandate, resignMandate } = require('../services/mandates');
+const { verifyPurchase } = require('../services/verify');
+const tickets = require('../services/tickets');
+const spec = require('../lib/spec');
 const audit = require('../lib/audit');
 const llm = require('../lib/llm');
 
@@ -14,122 +17,86 @@ router.get('/context', (req, res) => {
   res.json({ user, agent, payment_method: pm, llm: llm.hasKey() });
 });
 
-// Fallback determinista compartido: los valores del caso de demo. Se usa cuando no hay
-// API key o la llamada al LLM falla — la demo nunca depende de OpenAI (DECISIONS #17).
-function demoMandate() {
-  const finDeMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0);
-  return {
-    category: 'flights',
-    destination: 'Córdoba',
-    max_amount: 150,
-    total_budget: 150,
-    valid_until: `${finDeMes.getFullYear()}-${String(finDeMes.getMonth() + 1).padStart(2, '0')}-${String(finDeMes.getDate()).padStart(2, '0')}`,
-    price_below: 150,
-    max_uses_per_month: 1,
-  };
-}
+// --- Tickets de mandato -------------------------------------------------------------
+// Una petición del usuario → investigación real → ticket editable → firma.
 
-// Normaliza lo que devuelve el LLM: números reales, sin valores absurdos, categoría fija.
-// El modelo propone texto; los tipos y los defaults los impone el servidor.
-function normalizeMandate(m) {
-  const num = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-  const out = {
-    category: 'flights',
-    destination: m.destination ? String(m.destination) : null,
-    max_amount: num(m.max_amount),
-    total_budget: num(m.total_budget),
-    valid_until: m.valid_until ? String(m.valid_until) : null,
-    price_below: num(m.price_below),
-    max_uses_per_month: num(m.max_uses_per_month),
-  };
-  // Misma regla que el prompt, pero aplicada de forma determinista por si el LLM la ignora
-  if (out.price_below && !out.max_amount) out.max_amount = out.price_below;
-  if (!out.total_budget && out.max_amount) out.total_budget = out.max_amount * (out.max_uses_per_month || 1);
-  if (out.valid_until && !/^\d{4}-\d{2}-\d{2}$/.test(out.valid_until)) out.valid_until = null;
-  return out;
-}
+router.get('/tickets', (req, res) => {
+  res.json(tickets.list());
+});
 
-// Campos sin los cuales un mandato no puede firmarse
-function missingFields(m) {
-  const missing = [];
-  if (!m || !m.max_amount) missing.push('max_amount');
-  if (!m || !m.valid_until) missing.push('valid_until');
-  return missing;
-}
-
-// LLM: texto libre → Intent Mandate estructurado (Marta confirma antes de firmar)
-router.post('/parse-mandate', async (req, res) => {
+router.post('/tickets', (req, res) => {
   const { text } = req.body;
+  if (!text || !String(text).trim()) return res.status(400).json({ error: 'falta el texto de la petición' });
+  const user = db.prepare('SELECT * FROM users LIMIT 1').get();
+  // Responde de inmediato con el ticket en 'researching': el scraping sigue en segundo
+  // plano y el front lo ve llegar por polling.
+  res.json(tickets.create(user.id, text));
+});
+
+router.get('/tickets/:id', (req, res) => {
+  const t = tickets.view(tickets.row(req.params.id));
+  if (!t) return res.status(404).json({ error: 'no existe' });
+  res.json(t);
+});
+
+// El usuario cambia variables del ticket (marca, gramaje, tope de precio, fecha…)
+router.patch('/tickets/:id', async (req, res) => {
+  const t = await tickets.patch(req.params.id, req.body);
+  if (!t) return res.status(404).json({ error: 'no existe' });
+  res.json(t);
+});
+
+router.post('/tickets/:id/chat', async (req, res) => {
+  const t = await tickets.chat(req.params.id, req.body.message);
+  if (!t) return res.status(404).json({ error: 'no existe' });
+  res.json(t);
+});
+
+// Volver a investigar: cambió qué se quiere comprar, no solo cuánto se quiere gastar
+router.post('/tickets/:id/research', async (req, res) => {
+  const t = await tickets.reinvestigar(req.params.id);
+  if (!t) return res.status(404).json({ error: 'no existe' });
+  res.json(t);
+});
+
+router.post('/tickets/:id/sign', (req, res) => {
   try {
-    const parsed = await llm.parseMandate(text);
-    res.json({ source: 'llm', mandate: parsed });
+    res.json(tickets.sign(req.params.id));
   } catch (e) {
-    res.json({ source: 'fallback', error: e.message, mandate: demoMandate() });
+    res.status(400).json({ error: e.message });
   }
 });
 
-// Chat multi-turno: Marta conversa y el LLM va armando el mandato. Stateless — el
-// frontend manda el historial completo en cada turno.
-// El `ready` del LLM es solo una sugerencia: quien decide si el mandato está completo
-// es este handler, sobre los campos requeridos (el LLM propone, el mandato dispone).
-router.post('/mandate-chat', async (req, res) => {
-  const messages = Array.isArray(req.body.messages) ? req.body.messages : [];
-  try {
-    const out = await llm.chatMandate(messages);
-    const mandate = out.mandate ? normalizeMandate(out.mandate) : null;
-    const missing = missingFields(mandate);
-    const ready = missing.length === 0;
-    // El LLM aporta naturalidad mientras pregunta, pero el turno del hand-off es
-    // determinista: su texto podría contradecir el mandato que se va a firmar
-    // (visto en pruebas: decía "ready" y a la vez pedía un dato que ya tenía).
-    const preguntas = { max_amount: '¿Cuánto como máximo por compra?', valid_until: '¿Hasta qué fecha quieres que valga el mandato?' };
-    const reply = ready
-      ? 'Con eso ya tengo todo. Te muestro el mandato completo: revísalo y fírmalo si estás de acuerdo.'
-      : String(out.reply || preguntas[missing[0]] || '');
-    res.json({ source: 'llm', reply, mandate, ready, missing });
-  } catch (e) {
-    // Sin LLM la conversación se degrada a un turno: proponemos el mandato de la demo
-    // y que Marta lo revise en el box de confirmación. El badge lo declara como fallback.
-    res.json({
-      source: 'fallback',
-      error: e.message,
-      reply: 'No pude consultar al modelo, así que te propongo el mandato de la demo. Revísalo y ajústalo antes de firmar.',
-      mandate: demoMandate(),
-      ready: true,
-      missing: [],
-    });
-  }
+router.post('/tickets/:id/discard', (req, res) => {
+  res.json(tickets.discard(req.params.id));
 });
+
+// --- Mandatos -----------------------------------------------------------------------
 
 router.get('/mandates', (req, res) => {
   const rows = db.prepare('SELECT * FROM mandates ORDER BY id DESC').all();
-  res.json(rows.map((m) => ({ ...m, conditions: JSON.parse(m.conditions_json || '{}') })));
+  res.json(rows.map((m) => ({ ...m, spec: JSON.parse(m.spec_json || '[]') })));
 });
 
+// Alta directa sin ticket: la usa demo.sh y sirve de API para integradores.
 router.post('/mandates', (req, res) => {
   const user = db.prepare('SELECT * FROM users LIMIT 1').get();
   const agent = db.prepare('SELECT * FROM agents WHERE is_rogue = 0 LIMIT 1').get();
   const pm = db.prepare('SELECT * FROM payment_methods WHERE user_id = ?').get(user.id);
-  const { category = 'flights', destination, max_amount, total_budget, valid_until, price_below, max_uses_per_month, nl_text } = req.body;
-
-  const conditions = {};
-  if (destination) conditions.destination = destination;
-  if (price_below != null && price_below !== '') conditions.price_below = Number(price_below);
-  if (max_uses_per_month != null && max_uses_per_month !== '') conditions.max_uses_per_month = Number(max_uses_per_month);
+  const { product_type = 'flights', spec: rawSpec = [], max_amount, total_budget, max_uses_per_month, valid_until, nl_text } = req.body;
+  if (!max_amount || !valid_until) return res.status(400).json({ error: 'max_amount y valid_until son obligatorios' });
 
   const row = createMandate({
     user_id: user.id,
     agent_id: agent.id,
     payment_method_id: pm.id,
-    category,
+    product_type,
+    spec: spec.sanitize(rawSpec),
     max_amount: Number(max_amount),
     total_budget: Number(total_budget || max_amount),
+    max_uses_per_month: max_uses_per_month != null ? Number(max_uses_per_month) : null,
     valid_from: new Date().toISOString(),
     valid_until: new Date(valid_until + 'T23:59:59').toISOString(),
-    conditions,
     nl_text,
   });
   res.json(row);
@@ -154,13 +121,16 @@ router.patch('/mandates/:id', (req, res) => {
   );
   audit.append('human', 'mandate_limits_changed', { mandate_id: m.id, max_amount, total_budget, valid_until });
   // Nota: cambiar el mandato invalida la firma anterior → el Wallet lo re-firma
-  const { mandatePayload } = require('../services/mandates');
-  const { ensureKeys } = require('../db');
-  const { sign } = require('../lib/crypto');
-  const updated = db.prepare('SELECT * FROM mandates WHERE id = ?').get(m.id);
-  const signature = sign(mandatePayload(updated), ensureKeys('wallet').private_key);
-  db.prepare('UPDATE mandates SET wallet_signature = ? WHERE id = ?').run(signature, m.id);
+  resignMandate(m.id);
   res.json({ ok: true });
+});
+
+// Verificación completa de un intento de compra: el merchant la invoca por HTTP en cada
+// checkout (DECISIONS #33). La lógica es 100% determinista y vive en services/verify.js.
+router.post('/verify', (req, res) => {
+  const { cart, agent_signature } = req.body || {};
+  if (!cart) return res.status(400).json({ error: 'falta cart' });
+  res.json(verifyPurchase({ cart, agent_signature }));
 });
 
 // Estado en vivo (lo que consulta el merchant en cada verificación)
@@ -169,12 +139,13 @@ router.get('/mandates/:id/status', (req, res) => {
   res.json(m || { error: 'no existe' });
 });
 
-// Registro de compras que ve Marta
+// --- Registro y aprobaciones ---------------------------------------------------------
+
 router.get('/purchases', (req, res) => {
   const rows = db
-    .prepare('SELECT p.*, m.category AS mandate_category FROM purchases p LEFT JOIN mandates m ON m.id = p.mandate_id ORDER BY p.id DESC LIMIT 100')
+    .prepare('SELECT p.*, m.product_type AS mandate_product_type FROM purchases p LEFT JOIN mandates m ON m.id = p.mandate_id ORDER BY p.id DESC LIMIT 100')
     .all();
-  res.json(rows.map((p) => ({ ...p, checks: JSON.parse(p.checks_json || '[]') })));
+  res.json(rows.map((p) => ({ ...p, checks: JSON.parse(p.checks_json || '[]'), attributes: JSON.parse(p.attributes_json || '{}') })));
 });
 
 // Human-in-the-loop: aprobaciones pendientes

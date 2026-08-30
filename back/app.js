@@ -20,6 +20,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 app.use('/api/wallet', walletRouter);
 app.use('/api/merchant', merchantRouter);
 app.use('/api/audit', auditRouter);

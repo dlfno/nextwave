@@ -4,15 +4,33 @@
  * Module dependencies.
  */
 
-var app = require('../app');
 var debug = require('debug')('back:server');
 var http = require('http');
+
+// APP selecciona qué servicio levantar (DECISIONS #33). Sin APP: el monolito en :3000.
+var APPS = {
+  wallet: ['../apps/wallet', 3001],
+  merchant: ['../apps/merchant', 3002],
+  agent: ['../apps/agent', 3003],
+  all: ['../app', 3000],
+};
+var which = APPS[process.env.APP || 'all'] || APPS.all;
+
+// Modo monolito: los 3 routers viven en este proceso, así que las llamadas entre servicios
+// (merchant → wallet /verify) deben volver a este mismo puerto, no a :3001/:3002.
+if ((process.env.APP || 'all') === 'all') {
+  var selfPort = process.env.PORT || String(which[1]);
+  process.env.WALLET_URL = process.env.WALLET_URL || 'http://localhost:' + selfPort;
+  process.env.MERCHANT_URL = process.env.MERCHANT_URL || 'http://localhost:' + selfPort;
+}
+
+var app = require(which[0]);
 
 /**
  * Get port from environment and store in Express.
  */
 
-var port = normalizePort(process.env.PORT || '3000');
+var port = normalizePort(process.env.PORT || String(which[1]));
 app.set('port', port);
 
 /**

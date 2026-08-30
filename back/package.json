@@ -3,15 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "concurrently -n wallet,merchant,agent -c blue,green,magenta --restart-tries 5 --restart-after 1000 \"npm:start:wallet\" \"sleep 2 && npm run start:merchant\" \"sleep 4 && npm run start:agent\"",
+    "start:wallet": "APP=wallet node ./bin/www",
+    "start:merchant": "APP=merchant node ./bin/www",
+    "start:agent": "APP=agent node ./bin/www",
+    "start:mono": "node ./bin/www",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.6",
     "debug": "~2.6.9",
     "dotenv": "^17.4.2",
     "express": "~4.16.1",
     "morgan": "~1.9.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
