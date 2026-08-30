@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/**', (route) => route.fulfill({
+    status: 503,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'PRESENTATION_MODE', message: 'API intentionally unavailable' } }),
+  }));
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('nextwave_demo_mandate_status'));
 });
