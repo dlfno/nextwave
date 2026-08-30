@@ -12,6 +12,7 @@
           </article>
         }
         @if (busy()) { <div class="thinking"><i></i><i></i><i></i><span>Checking your constraints</span></div> }
+        @if (conversationError()) { <p class="field-error" role="alert">{{ conversationError() }}</p> }
       </div>
       <form class="composer" (ngSubmit)="send()"><label for="reply">Reply to your agent</label><textarea id="reply" [(ngModel)]="reply" name="reply" rows="2" placeholder="Add dates, preferences, or limits…"></textarea><div><button type="button" class="attach" aria-label="Attach a file">+</button><span>The agent cannot authorize its own purchases.</span><button type="submit" class="send" [disabled]="!reply.trim() || busy()" aria-label="Send message">↑</button></div></form>
     </section>
@@ -27,7 +28,7 @@
       </section>
       <div class="boundary"><span>Deterministic boundary</span><p>This conversation shapes the mandate. It never approves payment.</p></div>
       @if (reviewError()) { <p class="field-error" role="alert">{{ reviewError() }}</p> }
-      <button class="primary-button review" [disabled]="(!ready() && !!intentId()) || reviewBusy()" (click)="reviewMandate()">{{ reviewBusy() ? 'Preparing mandate…' : ready() || !intentId() ? 'Review mandate' : 'Finish clarification first' }} <span>↗</span></button>
+      <button class="primary-button review" [disabled]="!ready() || reviewBusy()" (click)="reviewMandate()">{{ reviewBusy() ? 'Preparing mandate…' : ready() ? 'Review mandate' : 'Finish clarification first' }} <span>↗</span></button>
     </aside>
   </div>
 </main>

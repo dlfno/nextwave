@@ -30,8 +30,11 @@ export class IntentPage {
       switchMap(({ agents }) => agents[0] ? this.api.createIntent(agents[0].id, request) : this.api.createAgent().pipe(switchMap(({ agent }) => this.api.createIntent(agent.id, request)))),
       finalize(() => this.busy.set(false)),
     ).subscribe({
-      next: (result) => void this.router.navigate(['/agent'], { state: { result, prompt: request } }),
-      error: () => void this.router.navigate(['/agent'], { queryParams: { prompt: request, demo: 'true' } }),
+      next: (result) => void this.router.navigate(['/agent'], {
+        queryParams: { intentId: result.intent.id },
+        state: { result, prompt: request },
+      }),
+      error: (error: Error) => this.error.set(error.message),
     });
   }
 }

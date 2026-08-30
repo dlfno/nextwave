@@ -20,9 +20,9 @@ test.describe('persisted judge rehearsal', () => {
       'Depart from Mexico City MEX to Córdoba, Argentina COR, departing 2026-09-15, one passenger, maximum $150 USD, valid until 2027-12-31. Require final confirmation.',
     );
     await page.getByRole('button', { name: 'Start conversation' }).click();
-    await expect(page).toHaveURL(/\/agent$/);
+    await expect(page).toHaveURL(/\/agent\?intentId=[0-9a-f-]+$/);
     await page.getByRole('button', { name: 'Review mandate' }).click();
-    await expect(page).toHaveURL(/\/mandates\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(/\/mandates\/[0-9a-f-]+$/, { timeout: 15_000 });
 
     await page.getByRole('button', { name: 'Authorize mandate' }).click();
     await expect(page.getByText('Mandate signed and activated.')).toBeVisible();

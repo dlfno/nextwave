@@ -81,6 +81,10 @@ export class ApiClient {
     return this.request<PurchaseIntentResult>('post', '/purchase-intents', { agentId, originalRequest });
   }
 
+  getIntent(intentId: string): Observable<PurchaseIntentResult> {
+    return this.request<PurchaseIntentResult>('get', `/purchase-intents/${intentId}`);
+  }
+
   addIntentMessage(intentId: string, content: string): Observable<{ status: string; ready: boolean; messages: IntentMessage[] }> {
     return this.request('post', `/purchase-intents/${intentId}/messages`, { content });
   }
