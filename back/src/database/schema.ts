@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, integer, jsonb, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 const citext = customType<{ data: string }>({
   dataType: () => 'citext',
@@ -27,6 +27,7 @@ export const mandateVersionStatus = pgEnum('mandate_version_status', [
   'DRAFT', 'ACTIVE', 'SUPERSEDED', 'REVOKED', 'EXPIRED', 'CANCELLED',
 ]);
 export const mandateMode = pgEnum('mandate_mode', ['HUMAN_PRESENT', 'AUTONOMOUS']);
+export const runStatus = pgEnum('run_status', ['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED']);
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -78,6 +79,26 @@ export const intentMessages = pgTable('intent_messages', {
   content: text('content').notNull(),
   structuredPayload: jsonb('structured_payload'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const merchants = pgTable('merchants', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  status: text('status').notNull().$type<'ACTIVE' | 'SUSPENDED' | 'REVOKED'>().default('ACTIVE'),
+  publicJwk: jsonb('public_jwk'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const products = pgTable('products', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  canonicalName: text('canonical_name').notNull(),
+  category: text('category').notNull(),
+  description: text('description'),
+  attributes: jsonb('attributes').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const mandates = pgTable('mandates', {
@@ -136,3 +157,37 @@ export const mandateRevocations = pgTable('mandate_revocations', {
   reason: text('reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const discoveryRuns = pgTable('discovery_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  intentId: uuid('intent_id').notNull().references(() => purchaseIntents.id, { onDelete: 'cascade' }),
+  status: runStatus('status').notNull().default('PENDING'),
+  providerIds: text('provider_ids').array().notNull().default([]),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  failureCode: text('failure_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const offers = pgTable('offers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  discoveryRunId: uuid('discovery_run_id').notNull().references(() => discoveryRuns.id, { onDelete: 'cascade' }),
+  providerId: text('provider_id').notNull(),
+  merchantId: uuid('merchant_id').notNull().references(() => merchants.id),
+  merchantProductId: text('merchant_product_id').notNull(),
+  productId: uuid('product_id').references(() => products.id),
+  productName: text('product_name').notNull(),
+  description: text('description'),
+  category: text('category').notNull(),
+  unitPriceMinor: bigint('unit_price_minor', { mode: 'bigint' }).notNull(),
+  currency: customType<{ data: string }>({ dataType: () => 'char(3)' })('currency').notNull(),
+  availability: text('availability').notNull(),
+  shippingEstimate: jsonb('shipping_estimate'),
+  sourceType: text('source_type').notNull().$type<'UCP' | 'MERCHANT_API' | 'INTERNAL_CATALOG' | 'WEB' | 'MOCK'>(),
+  sourceReference: text('source_reference').notNull(),
+  observedAt: timestamp('observed_at', { withTimezone: true }).notNull(),
+  confidence: numeric('confidence', { precision: 5, scale: 4 }).notNull(),
+  supportsAuthoritativeCheckout: boolean('supports_authoritative_checkout').notNull().default(false),
+  rawPayload: jsonb('raw_payload'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('offers_run_price_idx').on(table.discoveryRunId, table.currency, table.unitPriceMinor)]);

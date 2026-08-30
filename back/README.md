@@ -87,6 +87,21 @@ live revocation, checkout freshness and context binding, merchant/product/catego
 quantity, amount, currency, recurrence, budget, and checkout-bound approval.
 Approval evidence never overrides a failed mandate constraint.
 
+## Discovery
+
+Milestone 5 exposes:
+
+- `POST /api/v1/purchase-intents/:intentId/discovery-runs`
+- `GET /api/v1/discovery-runs/:runId`
+- `GET /api/v1/discovery-runs/:runId/offers`
+
+Discovery requires an authorized mandate. The P0 `MockVuelaYaDiscoveryProvider`
+returns the fictional $130 and $300 MEX–COR offers for the demo search. Provider
+results are runtime-validated, filtered for availability and currency, normalized,
+ranked, and persisted. Every offer response includes `authoritative: false`:
+discovery prices are evidence for comparison only. Milestone 6 must obtain a live
+merchant quote and checkout before mandate evaluation or payment.
+
 ## Authentication and CSRF
 
 Registration and login set two cookies:

@@ -12,6 +12,7 @@ import { errorHandler, notFoundHandler } from './http/error-handler.js';
 import { requireAllowedOrigin } from './http/origin.js';
 import { createAgentRouter } from './modules/agents/agent-router.js';
 import { createAuthRouter } from './modules/auth/auth-router.js';
+import { createDiscoveryRouter, DiscoveryEngine, MockVuelaYaDiscoveryProvider } from './modules/discovery/index.js';
 import { createMandateRouter } from './modules/mandates/mandate-router.js';
 import { type MandateSigner, UnavailableMandateSigner } from './modules/mandates/mandate-signer.js';
 import { createPurchaseIntentRouter } from './modules/purchase-intents/purchase-intent-router.js';
@@ -26,6 +27,7 @@ interface AppDependencies {
   logger?: Logger;
   agentProvider?: PurchasingAgentProvider;
   mandateSigner?: MandateSigner;
+  discoveryEngine?: DiscoveryEngine;
 }
 
 export function createApp({
@@ -34,6 +36,7 @@ export function createApp({
   logger = pino(),
   agentProvider = new MockPurchasingAgentProvider(),
   mandateSigner = new UnavailableMandateSigner(),
+  discoveryEngine = new DiscoveryEngine([new MockVuelaYaDiscoveryProvider()]),
 }: AppDependencies): Express {
   const app = express();
 
@@ -50,6 +53,7 @@ export function createApp({
   app.use('/api/v1/agents', createAgentRouter(database));
   app.use('/api/v1/purchase-intents', createPurchaseIntentRouter(database, agentProvider));
   app.use('/api/v1', createMandateRouter(database, mandateSigner));
+  app.use('/api/v1', createDiscoveryRouter(database, discoveryEngine));
 
   app.use(notFoundHandler);
   app.use(errorHandler);
