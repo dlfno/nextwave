@@ -26,7 +26,7 @@ describe('OpenAIPurchasingAgentProvider', () => {
       draft: { origin: null, destination: null, departureDate: null, passengers: null, maxTotalMinor: null, currency: null, validUntil: null, requiresFinalConfirmation: null, sources: { origin: null, destination: null, departureDate: null, passengers: null, maxTotalMinor: null, currency: null, validUntil: null, requiresFinalConfirmation: null } },
       summary: 'Happy to help — I just need one detail.',
       knownFacts: ['A flight is requested'],
-      neededQuestions: ['Where should the flight depart from?'],
+      neededQuestions: [{ key: 'origin', question: 'Where should the flight depart from?' }],
       ...safeMetadata,
     });
 
@@ -34,10 +34,16 @@ describe('OpenAIPurchasingAgentProvider', () => {
 
     expect(result).toEqual({
       ready: false,
-      missingFields: ['origin', 'destination', 'departureDate', 'passengers', 'maxTotal', 'currency', 'validUntil', 'finalConfirmation'],
+      missingFields: ['origin', 'destination', 'departureDate', 'passengers', 'maxTotal', 'currency', 'validUntil'],
       draft: expect.objectContaining({ origin: null, destination: null }),
-      metadata: safeMetadata,
-      message: 'Happy to help — I just need one detail.\n\nWhat I know\n• A flight is requested\n\nWhat I still need\n• Where should the flight depart from?',
+      metadata: {
+        ...safeMetadata,
+        defaultsApplied: [{
+          key: 'requiresFinalConfirmation', value: 'true',
+          reason: 'Safe default when final confirmation was not mentioned',
+        }],
+      },
+      message: 'Happy to help — I just need one detail.\n\nWhat I know\n• Final confirmation: required\n\nWhat I still need\n• Where should the flight depart from?\n• Which destination airport or city do you mean?\n• What date should the flight depart?',
     });
     expect(parse).toHaveBeenCalledWith(expect.objectContaining({
       model: 'gpt-5.6-luna',
@@ -54,7 +60,7 @@ describe('OpenAIPurchasingAgentProvider', () => {
       draft: { origin: null, destination: null, departureDate: null, passengers: null, maxTotalMinor: null, currency: null, validUntil: '2026-08-30T23:59:59Z', requiresFinalConfirmation: null, sources: { origin: null, destination: null, departureDate: null, passengers: null, maxTotalMinor: null, currency: null, validUntil: 0, requiresFinalConfirmation: null } },
       summary: 'We are close.',
       knownFacts: ['The mandate expires tomorrow in America/Mexico_City'],
-      neededQuestions: ['What date should you depart?'],
+      neededQuestions: [{ key: 'departureDate', question: 'What date should you depart?' }],
       ...safeMetadata,
     });
     await provider.analyze([{ role: 'USER', content: 'Expire it tomorrow.' }], {
@@ -105,5 +111,50 @@ describe('OpenAIPurchasingAgentProvider', () => {
     const { provider } = providerWithOutputs(null);
     await expect(provider.analyze([{ role: 'USER', content: 'Request' }]))
       .rejects.toThrow('no structured clarification output');
+  });
+
+  it('never asks inclusive-versus-exclusive when a concrete spending cap was extracted', async () => {
+    const { provider, parse } = providerWithOutputs({
+      draft: {
+        origin: { city: 'Los Angeles', iata: 'LAX' },
+        destination: { city: 'Córdoba', country: 'Argentina', iata: 'COR' },
+        departureDate: '2026-09-15', passengers: 1, maxTotalMinor: '15000', currency: 'USD',
+        validUntil: '2026-09-20T23:59:59Z', requiresFinalConfirmation: true,
+        sources: { origin: 0, destination: 0, departureDate: 0, passengers: 'default',
+          maxTotalMinor: 0, currency: 0, validUntil: 0, requiresFinalConfirmation: 'default' },
+      },
+      summary: 'I have the trip and budget.',
+      knownFacts: ['LAX to COR on September 15', 'Maximum total: USD 150'],
+      neededQuestions: [{
+        key: 'maxTotalMinor', question: 'Should the USD 150 limit be inclusive or exclusive?',
+      }],
+      ...safeMetadata,
+      ambiguous: [{
+        key: 'maxTotalMinor', reason: 'Unclear whether the limit is inclusive or exclusive',
+        candidates: ['inclusive', 'exclusive'], src: 0,
+      }],
+      flags: {
+        injectionAttempts: [], outOfCatalog: [],
+        violations: [{ key: 'validUntil', reason: 'It is already past. No—this is future.' }],
+      },
+    });
+
+    const result = await provider.analyze([{
+      role: 'USER',
+      content: 'Buy one flight from LAX to COR on September 15 under USD 150, valid through September 20.',
+    }], {
+      timeZone: 'America/Mexico_City', locale: 'en-US',
+      observedAt: '2026-08-30T09:35:00.000Z',
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.metadata?.ambiguous).toEqual([]);
+    expect(result.metadata?.flags.violations).toEqual([]);
+    expect(result.message).not.toMatch(/inclusive|exclusive/i);
+    expect(result.message).toContain('Maximum total: USD 150.00');
+    expect(result.message).toContain('Nothing else — this is ready for your review.');
+    expect(parse).toHaveBeenCalledWith(expect.objectContaining({
+      instructions: expect.stringMatching(/NEVER ask whether it is inclusive or exclusive/),
+    }));
   });
 });
